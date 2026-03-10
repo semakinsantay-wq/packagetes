@@ -101,7 +101,7 @@ end
 local SOLVER_API_URL = "http://134.199.219.230:3000/solve"
 local AUTO_RANDOM_CODE = false
 
-local GRID_COLS = 4
+local GRID_COLS = 3
 local BOX_SIZE = 150
 local START_OFFSET_Y = 80
 local GAP_X = 5
@@ -156,13 +156,19 @@ local function getPackages()
 end
 
 local function getRobloxCookie(packageName)
-    local tempPath = "/sdcard/temp_cookie_" .. packageName .. "_" .. tostring(os.time()) .. ".db"
-    os.execute("su -c 'cp /data/data/" .. packageName .. "/app_webview/Default/Cookies " .. tempPath .. " 2>/dev/null'")
-    local query = "sqlite3 " .. tempPath .. " \"SELECT value FROM cookies WHERE name = '.ROBLOSECURITY' LIMIT 1\""
-    local cookie = exec(query)
-    os.execute("rm -f " .. tempPath)
+    -- FIX: Pindah ke /data/local/tmp/ root agar tidak kena limitasi /sdcard/ Android
+    local tempPath = "/data/local/tmp/tc_" .. packageName .. ".db"
     
-    if cookie and cookie ~= "" then
+    os.execute("su -c 'cp /data/data/" .. packageName .. "/app_webview/Default/Cookies " .. tempPath .. " 2>/dev/null'")
+    os.execute("su -c 'chmod 777 " .. tempPath .. " 2>/dev/null'")
+    
+    -- Eksekusi lewat su secara langsung agar aman dari permission
+    local query = "su -c 'sqlite3 " .. tempPath .. " \"SELECT value FROM cookies WHERE name = ''.ROBLOSECURITY'' LIMIT 1\" 2>/dev/null'"
+    local cookie = exec(query)
+    
+    os.execute("su -c 'rm -f " .. tempPath .. " 2>/dev/null'")
+    
+    if cookie and cookie ~= "" and not cookie:match("Error") then
         if not cookie:match("^_") then cookie = "_" .. cookie end
         return cookie
     end
@@ -282,8 +288,9 @@ local function fetchLinkCodes()
     local res = exec("curl -sL '" .. config.MSRV_URL .. "'")
     local codes = {}
     for line in res:gmatch("[^\r\n]+") do
-        local clean_code = line:gsub("[%c%s]", "") 
-        if clean_code ~= "" and not clean_code:match("<html") then
+        -- FIX: Buang semua karakter aneh secara agresif. Hanya sisakan huruf, angka, dan strip.
+        local clean_code = line:gsub("[^%w%-]", "") 
+        if clean_code ~= "" and not clean_code:match("html") then
             table.insert(codes, clean_code)
         end
     end
@@ -306,12 +313,10 @@ local function renderDashboard(codeDisplay, statusMsg)
     for pkg in pairs(accountStates) do table.insert(sorted_pkgs, pkg) end
     table.sort(sorted_pkgs)
     
-    -- Looping cetak biasa tanpa perhitungan njlimet
     for _, pkg in ipairs(sorted_pkgs) do
         local s = accountStates[pkg]
         local stateIcon = s.isRunning and "🟢 RUN" or "⚪ WAIT"
         
-        -- Format cetak daftar lurus
         print(string.format(" 👤 %s | %s | 💾 %s", s.username, stateIcon, s.ramUsage))
         print(string.format("    └─ %s\n", s.serverStatus))
     end
@@ -362,9 +367,13 @@ if not AUTO_RANDOM_CODE then
     print("\n📜 DAFTAR SERVER TERSEDIA:")
     print("-----------------------------------------")
     
-    -- Print daftar biasa menggunakan For/While loop
     for i, c in ipairs(codes) do
-        print(string.format(" [%d] %s", i, c))
+        -- FIX TAMPILAN: Potong kode agar tidak membuat terminal menjorok ke baris bawah
+        local display_c = c
+        if #c > 45 then
+            display_c = c:sub(1, 20) .. "..." .. c:sub(-15)
+        end
+        print(string.format(" [%2d] %s", i, display_c))
     end
     
     print("-----------------------------------------")
