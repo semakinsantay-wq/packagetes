@@ -3,11 +3,10 @@
 local os = require("os")
 local io = require("io")
 
--- BERSIHKAN LAYAR AWAL
 os.execute("clear")
 
 -- ==========================================
--- FUNGSI UTILITAS DASAR & RESPONSIVE UI
+-- FUNGSI UTILITAS DASAR
 -- ==========================================
 local function sleep(ms)
     os.execute("sleep " .. tonumber(ms) / 1000)
@@ -32,27 +31,6 @@ local function urlencode(str)
     return str
 end
 
--- Mendeteksi lebar terminal (Responsive)
-local function getTermWidth()
-    local f = io.popen("stty size 2>/dev/null")
-    if f then
-        local res = f:read("*a")
-        f:close()
-        local r, c = res:match("(%d+)%s+(%d+)")
-        if c then return tonumber(c) end
-    end
-    return 60 -- Default jika gagal deteksi
-end
-
--- Memotong teks panjang agar tidak merusak layout
-local function truncate(str, maxLen)
-    if not str then return "" end
-    if #str > maxLen then
-        return str:sub(1, maxLen - 2) .. ".."
-    end
-    return str
-end
-
 -- ==========================================
 -- MANAJEMEN KONFIGURASI (JSON)
 -- ==========================================
@@ -62,7 +40,7 @@ local config = {}
 if arg then
     for i = 1, #arg do
         if arg[i] == "-reset" then
-            print("🔄 Opsi '-reset' terdeteksi. Menghapus konfigurasi lama...\n")
+            print("🔄 Opsi '-reset' terdeteksi. Menghapus config lama...\n")
             os.remove(config_file)
             break
         end
@@ -83,10 +61,9 @@ if file_exists(config_file) then
     config.PLACE_ID = content:match('"PLACE_ID"%s*:%s*"([^"]+)"')
     config.MSRV_URL = content:match('"MSRV_URL"%s*:%s*"([^"]+)"')
 else
-    local w = getTermWidth()
-    print(string.rep("=", w))
+    print("=================================")
     print(" 🚀 SETUP KONFIGURASI AWAL")
-    print(string.rep("=", w))
+    print("=================================")
     
     io.write("🔑 YES_KEY Solver  : ")
     config.YES_KEY = io.read()
@@ -119,32 +96,35 @@ else
 end
 
 -- ==========================================
--- CONFIGURATION LENGKAP PENGATURAN MESIN
+-- PENGATURAN MESIN
 -- ==========================================
 local SOLVER_API_URL = "http://134.199.219.230:3000/solve"
 local AUTO_RANDOM_CODE = false
 
-local GRID_COLS = 3
+local GRID_COLS = 4
 local BOX_SIZE = 150
-local START_OFFSET_Y = 50
+local START_OFFSET_Y = 80
 local GAP_X = 5
 local GAP_Y = 60
 
 local CHECK_INTERVAL = 60000 
 local MIN_RAM_THRESHOLD = 10
 local PRESENCE_CHECK_DELAY = 60000
-local DEBUG_MODE = false
 
 local accountStates = {}
 local csrfTokens = {}
 local launchTimers = {}
 
 -- ==========================================
--- FUNGSI SISTEM (TETAP SAMA PERSIS)
+-- FUNGSI SISTEM
 -- ==========================================
 local function applyPerformanceTweaks()
-    print("⚙️  Menerapkan Tweak Performa...")
+    print("⚙️  Menyiapkan Tampilan & Performa...")
     local tweaksCmd = [[
+        wm density 180 2>/dev/null;
+        settings put system accelerometer_rotation 0 2>/dev/null;
+        settings put system user_rotation 0 2>/dev/null;
+        
         for i in {0..7}; do
             echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null;
             echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor 2>/dev/null;
@@ -161,7 +141,8 @@ local function applyPerformanceTweaks()
         settings put global animator_duration_scale 0 2>/dev/null;
     ]]
     os.execute("su -c '" .. tweaksCmd .. "' >/dev/null 2>&1")
-    print("✅ Tweak Selesai!\n")
+    sleep(1000)
+    print("✅ Setting Layar & Tweak Selesai!\n")
 end
 
 local function getPackages()
@@ -310,61 +291,31 @@ local function fetchLinkCodes()
 end
 
 -- ==========================================
--- RENDER DASHBOARD (RESPONSIVE)
+-- RENDER DASHBOARD (TAMPILAN SIMPEL)
 -- ==========================================
 local function renderDashboard(codeDisplay, statusMsg)
     os.execute("clear")
-    local width = getTermWidth()
-    width = width < 40 and 40 or width -- Pastikan tidak kurang dari 40
+    print("=========================================")
+    print(" 🔥 LUA SYSTEM BOOSTER 🔥")
+    print("=========================================")
+    print(" 🎯 Code  : " .. codeDisplay)
+    print(" 📌 Status: " .. statusMsg)
+    print("-----------------------------------------")
     
-    local sep = string.rep("=", width)
-    local sepThin = string.rep("-", width)
-    
-    -- HEADER
-    print(sep)
-    local title = "🔥 LUA SYSTEM BOOSTER 🔥"
-    local pad = math.floor((width - #title) / 2)
-    print(string.rep(" ", pad > 0 and pad or 0) .. title)
-    print(sep)
-    print(string.format(" 🎯 Code  : %s", truncate(codeDisplay, width - 15)))
-    print(string.format(" 📌 Status: %s", truncate(statusMsg, width - 15)))
-    print(sepThin)
-    
-    -- DATA AKUN
     local sorted_pkgs = {}
     for pkg in pairs(accountStates) do table.insert(sorted_pkgs, pkg) end
     table.sort(sorted_pkgs)
     
-    if width >= 65 then
-        -- TABLE VIEW (Layar Lebar / Lanskap)
-        local c1, c2, c3, c4 = 14, 12, 8, 4 -- Lebar Kolom Tetap
-        local c5 = width - (c1 + c2 + c3 + c4 + 17) -- Sisa lebar untuk Status
-        c5 = c5 < 10 and 10 or c5
+    -- Looping cetak biasa tanpa perhitungan njlimet
+    for _, pkg in ipairs(sorted_pkgs) do
+        local s = accountStates[pkg]
+        local stateIcon = s.isRunning and "🟢 RUN" or "⚪ WAIT"
         
-        print(string.format(" %-"..c1.."s | %-"..c2.."s | %-"..c3.."s | %-"..c4.."s | %-"..c5.."s", "Package", "User", "RAM", "Run", "Status"))
-        print(sepThin)
-        
-        for _, pkg in ipairs(sorted_pkgs) do
-            local s = accountStates[pkg]
-            local shortPkg = truncate(pkg:gsub("com%.roblox%.client", "..client"), c1)
-            local shortUser = truncate(s.username, c2)
-            local stateIcon = s.isRunning and "🟢" or "⚪"
-            local shortStat = truncate(s.serverStatus, c5)
-            
-            print(string.format(" %-"..c1.."s | %-"..c2.."s | %-"..c3.."s | %-"..c4.."s | %-"..c5.."s", shortPkg, shortUser, s.ramUsage, stateIcon, shortStat))
-        end
-    else
-        -- LIST VIEW (Layar Sempit / Potret)
-        for _, pkg in ipairs(sorted_pkgs) do
-            local s = accountStates[pkg]
-            local shortUser = truncate(s.username, 14)
-            local stateIcon = s.isRunning and "🟢 RUN" or "⚪ WAIT"
-            
-            print(string.format(" 👤 %-14s | %s | 💾 %s", shortUser, stateIcon, s.ramUsage))
-            print(string.format("    └─ %s", truncate(s.serverStatus, width - 8)))
-        end
+        -- Format cetak daftar lurus
+        print(string.format(" 👤 %s | %s | 💾 %s", s.username, stateIcon, s.ramUsage))
+        print(string.format("    └─ %s\n", s.serverStatus))
     end
-    print(sep .. "\n")
+    print("=========================================\n")
 end
 
 local function runSolver(fullCookie, accPkg)
@@ -408,16 +359,16 @@ if #codes == 0 then print("⚠️ Gagal mendapat kode server."); os.exit(1) end
 
 local cleanCode = ""
 if not AUTO_RANDOM_CODE then
-    local w = getTermWidth()
-    print("\n" .. string.rep("-", w))
-    print("📜 DAFTAR SERVER TERSEDIA:")
-    print(string.rep("-", w))
+    print("\n📜 DAFTAR SERVER TERSEDIA:")
+    print("-----------------------------------------")
+    
+    -- Print daftar biasa menggunakan For/While loop
     for i, c in ipairs(codes) do
-        local display_c = #c > 16 and (c:sub(1, 6) .. "..." .. c:sub(-6)) or c
-        print(string.format(" [%2d] %s", i, display_c))
+        print(string.format(" [%d] %s", i, c))
     end
-    print(string.rep("-", w))
-    io.write("👉 Pilih server [1-"..#codes.."]: ")
+    
+    print("-----------------------------------------")
+    io.write("👉 Pilih server: ")
     
     local sel = tonumber(io.read())
     if not sel or sel < 1 or sel > #codes then print("❌ Pilihan tidak valid."); os.exit(1) end
@@ -455,7 +406,7 @@ for _, acc in ipairs(accounts) do
         local crashed = false
         for sec = 1, 60 do
             if sec % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-            renderDashboard(codeDisplay, string.format("Stabilisasi %s (%ds/60s)", truncate(acc.username, 8), sec))
+            renderDashboard(codeDisplay, string.format("Stabilisasi %s (%ds/60s)", acc.username, sec))
             sleep(1000)
             
             local healthCheck = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
@@ -523,7 +474,7 @@ while true do
                 local crashedDuringRec = false
                 for w = 1, 60 do
                     if w % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-                    renderDashboard(codeDisplay, string.format("Pemulihan %s (%ds/60s)", truncate(acc.username, 8), w))
+                    renderDashboard(codeDisplay, string.format("Pemulihan %s (%ds/60s)", acc.username, w))
                     sleep(1000)
                     
                     local recoveryHealth = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
