@@ -6,7 +6,7 @@ local io = require("io")
 os.execute("clear")
 
 -- ==========================================
--- FUNGSI UTILITAS DASAR
+-- FUNGSI UTILITAS DASARS
 -- ==========================================
 local function sleep(ms)
     os.execute("sleep " .. tonumber(ms) / 1000)
