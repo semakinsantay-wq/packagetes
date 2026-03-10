@@ -24,7 +24,7 @@ local function split(s, delimiter)
     return result
 end
 
--- URL ENCODER MURNI LUA (Pengganti Python)
+-- URL ENCODER MURNI LUA
 local function urlencode(str)
     if str then
         str = string.gsub(str, "\n", "\r\n")
@@ -40,6 +40,17 @@ end
 local config_file = "config.json"
 local config = {}
 
+-- Fitur Argumen -reset
+if arg then
+    for i = 1, #arg do
+        if arg[i] == "-reset" then
+            print("🔄 Opsi '-reset' terdeteksi. Menghapus konfigurasi lama...")
+            os.remove(config_file)
+            break
+        end
+    end
+end
+
 local function file_exists(name)
     local f = io.open(name, "r")
     if f ~= nil then io.close(f) return true else return false end
@@ -54,7 +65,7 @@ if file_exists(config_file) then
     config.PLACE_ID = content:match('"PLACE_ID"%s*:%s*"([^"]+)"')
     config.MSRV_URL = content:match('"MSRV_URL"%s*:%s*"([^"]+)"')
 else
-    print("🚀 Setup Konfigurasi Pertama Kali:")
+    print("🚀 Setup Konfigurasi:")
     
     io.write("Masukkan YES_KEY Solver: ")
     config.YES_KEY = io.read()
@@ -83,9 +94,9 @@ local SOLVER_API_URL = "http://134.199.219.230:3000/solve"
 local AUTO_RANDOM_CODE = false
 
 -- GRID SETTINGS (XML)
-local GRID_COLS = 4
+local GRID_COLS = 3
 local BOX_SIZE = 150
-local START_OFFSET_Y = 80
+local START_OFFSET_Y = 50
 local GAP_X = 5
 local GAP_Y = 60
 
@@ -126,7 +137,8 @@ local function getPackages()
     local output = exec("pm list packages | grep roblox")
     local packages = {}
     for pkg in output:gmatch("package:([^\n]+)") do
-        table.insert(packages, pkg:gsub("%s+", ""))
+        -- PERBAIKAN: Kurung ganda () untuk membuang nilai return ke-2 (angka) dari gsub
+        table.insert(packages, (pkg:gsub("%s+", "")))
     end
     table.sort(packages)
     return packages
@@ -326,7 +338,7 @@ end
 
 local function renderDashboard(codeDisplay, statusMsg)
     os.execute("clear")
-    print("📱 SYSTEM: BOOSTER ON 🔥 | Mode: LUA 5.3 (Ultra Lite)")
+    print("📱 SYSTEM: BOOSTER ON 🔥 | Mode: LUA 5.3")
     print(string.format("📏 MODE: XML GRID (%d cols) | GAP Y: %dpx", GRID_COLS, GAP_Y))
     print(string.format("📊 STATUS: %s | Code: %s\n", statusMsg, codeDisplay))
     
@@ -348,7 +360,6 @@ local function renderDashboard(codeDisplay, statusMsg)
 end
 
 local function runSolver(fullCookie, accPkg)
-    -- Menggunakan fungsi urlencode murni Lua, bukan Python lagi!
     local encodedCookie = urlencode(fullCookie)
     local cmd = string.format("curl -s '%s?cookie=%s&yeskey=%s'", SOLVER_API_URL, encodedCookie, config.YES_KEY)
     local res = exec(cmd)
