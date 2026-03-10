@@ -78,8 +78,20 @@ else
         config.PLACE_ID = pid_input
     end
     
-    io.write("Masukkan MSRV_URL (tanpa default): ")
-    config.MSRV_URL = io.read()
+    io.write("Masukkan MSRV_URL (tanpa https:// tidak apa-apa): ")
+    local msrv_input = io.read()
+    if msrv_input then
+        -- Bersihkan spasi berlebih
+        msrv_input = msrv_input:match("^%s*(.-)%s*$")
+        -- Cek apakah sudah ada http:// atau https://
+        if msrv_input ~= "" and not msrv_input:match("^https?://") then
+            config.MSRV_URL = "https://" .. msrv_input
+        else
+            config.MSRV_URL = msrv_input
+        end
+    else
+        config.MSRV_URL = ""
+    end
     
     local f = io.open(config_file, "w")
     local json_str = string.format('{\n  "YES_KEY": "%s",\n  "PLACE_ID": "%s",\n  "MSRV_URL": "%s"\n}', 
@@ -137,7 +149,7 @@ local function getPackages()
     local output = exec("pm list packages | grep roblox")
     local packages = {}
     for pkg in output:gmatch("package:([^\n]+)") do
-        -- PERBAIKAN: Kurung ganda () untuk membuang nilai return ke-2 (angka) dari gsub
+        -- Kurung ganda () untuk membuang nilai return ke-2 (angka) dari gsub
         table.insert(packages, (pkg:gsub("%s+", "")))
     end
     table.sort(packages)
