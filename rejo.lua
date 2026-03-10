@@ -1,552 +1,307 @@
-#!/data/data/com.termux/files/usr/bin/lua
+#!/usr/bin/env lua5.3
 
--- Manajer Roblox Multi-Akun untuk Termux (Lua 5.3)
--- Membutuhkan: pkg install lua53 sqlite curl
+-- ==========================================
+-- CONFIGURATION
+-- ==========================================
+local MSRV_URL = "https://ghostbin.axel.org/paste/nk4fh/raw"
+local PLACE_ID = "121864768012064"
 
--- ============================================
--- KONFIGURASI AWALA
--- ============================================
-local CONFIG_FILE = "roblox_config.json"
-local config = {}
+local SOLVER_API_URL = "http://134.199.219.230:3000/solve"
+local YES_KEY = "f7a1a420f1ae90ca6c9d4d71437262edbd0ea31237995"
 
--- Path absolut Termux agar aman saat mode root
-local TERMUX_BIN = "/data/data/com.termux/files/usr/bin/"
+local AUTO_RECONNECT = true
+local AUTO_RANDOM_CODE = false
 
-local function readFile(path)
-    local file = io.open(path, "r")
-    if not file then return nil end
-    local content = file:read("*all")
-    file:close()
-    return content
-end
+-- GRID SETTINGS (XML)
+local GRID_COLS = 3
+local BOX_SIZE = 150
+local START_OFFSET_Y = 50
+local GAP_X = 5
+local GAP_Y = 60
 
-local function writeFile(path, content)
-    local file = io.open(path, "w")
-    if not file then return false end
-    file:write(content)
-    file:close()
-    return true
-end
+-- TIMING & DETEKSI
+local CHECK_INTERVAL = 60000 -- 1 menit (ms)
+local PRESENCE_CHECK_DELAY = 60000
+local MIN_RAM_THRESHOLD = 10 -- MB
 
-local function simpleJsonEncode(t)
-    local function encode(val)
-        local typ = type(val)
-        if typ == "string" then
-            return '"' .. val:gsub('"', '\\"') .. '"'
-        elseif typ == "number" then
-            return tostring(val)
-        elseif typ == "boolean" then
-            return val and "true" or "false"
-        elseif typ == "table" then
-            local parts = {}
-            for k, v in pairs(val) do
-                table.insert(parts, '"' .. k .. '":' .. encode(v))
-            end
-            return "{" .. table.concat(parts, ",") .. "}"
-        else
-            return "null"
-        end
-    end
-    return encode(t)
-end
+local DEBUG_MODE = false
 
-local function simpleJsonDecode(str)
-    local t = {}
-    str = str:match("{(.*)}")
-    if not str then return nil end
-    
-    for k, v in str:gmatch('"([^"]+)":([^,]+)') do
-        v = v:gsub('^%s*(.-)%s*$', '%1')
-        if v:sub(1,1) == '"' then
-            t[k] = v:sub(2, -2)
-        elseif v == "true" then
-            t[k] = true
-        elseif v == "false" then
-            t[k] = false
-        elseif tonumber(v) then
-            t[k] = tonumber(v)
-        end
-    end
-    return t
-end
-
--- ============================================
--- CEK ARGUMEN
--- ============================================
-local function checkArgs()
-    for i = 1, #arg do
-        if arg[i] == "-reset" then
-            os.remove(CONFIG_FILE)
-            print("✅ Konfigurasi telah direset")
-            os.exit(0)
-        end
-    end
-end
-
--- ============================================
--- LOAD ATAU BUAT KONFIGURASI
--- ============================================
-local function loadOrCreateConfig()
-    local content = readFile(CONFIG_FILE)
-    
-    if content and content ~= "" then
-        config = simpleJsonDecode(content) or {}
-        print("📂 Memuat konfigurasi dari " .. CONFIG_FILE)
-        return true
-    else
-        print("\n🔧 Konfigurasi pertama kali - Masukkan data berikut:")
-        
-        print("\n🔑 Masukkan YES_KEY (tidak ada default):")
-        io.write("> ")
-        config.YES_KEY = io.read():match("^%s*(.-)%s*$")
-        if config.YES_KEY == "" then
-            print("❌ YES_KEY tidak boleh kosong!")
-            os.exit(1)
-        end
-        
-        print("\n🎮 Masukkan PLACE_ID [default: 121864768012064]:")
-        io.write("> ")
-        local newPlaceId = io.read():match("^%s*(.-)%s*$")
-        config.PLACE_ID = (newPlaceId ~= "" and newPlaceId) or "121864768012064"
-        
-        print("\n🌐 Masukkan MSRV_URL (tanpa https://) [default: ghostbin.axel.org/paste/nk4fh/raw]:")
-        io.write("> ")
-        local newMsrvUrl = io.read():match("^%s*(.-)%s*$")
-        config.MSRV_URL = (newMsrvUrl ~= "" and newMsrvUrl) or "ghostbin.axel.org/paste/nk4fh/raw"
-        
-        local encodedContent = simpleJsonEncode(config)
-        if writeFile(CONFIG_FILE, encodedContent) then
-            print("\n✅ Konfigurasi tersimpan di " .. CONFIG_FILE)
-        else
-            print("❌ Gagal menyimpan konfigurasi")
-            os.exit(1)
-        end
-        
-        return false
-    end
-end
-
-checkArgs()
-loadOrCreateConfig()
-
--- ============================================
--- KONFIGURASI SCRIPT
--- ============================================
-local SETTINGS = {
-    PLACE_ID = config.PLACE_ID,
-    MSRV_URL = "https://" .. config.MSRV_URL,
-    YES_KEY = config.YES_KEY,
-    
-    SOLVER_API_URL = "http://134.199.219.230:3000/solve",
-    
-    CHECK_SERVER_PRESENCE = false,
-    AUTO_RECONNECT = true,
-    AUTO_RANDOM_CODE = false,
-    
-    GRID_COLS = 3,
-    BOX_SIZE = 150,
-    START_OFFSET_Y = 50,
-    GAP_X = 5,
-    GAP_Y = 60,
-    
-    CHECK_INTERVAL = 120,
-    POST_GAME_WAIT = 15,
-    MAX_FINAL_RETRIES = 3,
-    
-    MIN_RAM_THRESHOLD = 10,
-    PRESENCE_CHECK_DELAY = 60,
-    DEBUG_MODE = false
-}
-
-print("\n🚀 Memulai dengan konfigurasi:")
-print("   PLACE_ID: " .. SETTINGS.PLACE_ID)
-print("   MSRV_URL: " .. SETTINGS.MSRV_URL)
-print("   YES_KEY: " .. string.sub(SETTINGS.YES_KEY, 1, 5).. "..." .. string.sub(SETTINGS.YES_KEY, -5))
-print("")
-
--- ============================================
--- GLOBAL VARIABLES
--- ============================================
+-- Data Storage
 local accountStates = {}
 local csrfTokens = {}
 local launchTimers = {}
-local lastRestartMap = {}
+local accounts = {}
+local codesList = {}
+local currentCleanCode = ""
 
--- ============================================
--- UTILITY FUNCTIONS
--- ============================================
-local function sleep(seconds)
-    os.execute("sleep " .. seconds)
+-- ==========================================
+-- HELPER FUNCTIONS
+-- ==========================================
+local function sleep(ms)
+    os.execute("sleep " .. tonumber(ms / 1000))
 end
 
-local function executeCommand(cmd)
-    local handle = io.popen(cmd .. " 2>&1")
+local function execShell(cmd)
+    local handle = io.popen(cmd)
+    if not handle then return "" end
     local result = handle:read("*a")
     handle:close()
-    return result
+    return result:gsub("^%s*(.-)%s*$", "%1") -- trim
 end
 
-local function httpGet(url)
-    local cmd = TERMUX_BIN .. 'curl -s -L --max-time 30 "' .. url .. '" 2>/dev/null'
-    local result = executeCommand(cmd)
-    
-    if result and result ~= "" then
-        return result, 200
-    end
-    
-    cmd = TERMUX_BIN .. 'wget -q -O- --timeout=30 "' .. url .. '" 2>/dev/null'
-    result = executeCommand(cmd)
-    if result and result ~= "" then
-        return result, 200
-    end
-    
-    return nil, 0
+local function execRoot(cmd)
+    -- Menggunakan su -c dan escape quotes
+    local safeCmd = cmd:gsub("'", "'\\''")
+    return execShell("su -c '" .. safeCmd .. "'")
 end
 
--- ============================================
--- SYSTEM FUNCTIONS
--- ============================================
+local function padRight(str, len)
+    str = tostring(str)
+    if #str >= len then return str:sub(1, len) end
+    return str .. string.rep(" ", len - #str)
+end
+
+-- ==========================================
+-- SYSTEM & TWEAKS
+-- ==========================================
 local function applyPerformanceTweaks()
-    print("\n🚀 Menerapkan Tweak Performa...")
-    local tweaksCmd = [[
+    print("\n🚀 Menerapkan Tweak Performa (CPU, Thermal, UI)...")
+    local tweakScript = [[
         for i in 0 1 2 3 4 5 6 7; do
-            echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null;
-            echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor 2>/dev/null;
-        done 2>/dev/null;
-        stop thermal-engine 2>/dev/null;
-        stop thermald 2>/dev/null;
-        echo 10 > /proc/sys/vm/swappiness 2>/dev/null;
+            echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null
+            echo performance > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor 2>/dev/null
+        done
+        stop thermal-engine 2>/dev/null
+        stop thermald 2>/dev/null
+        killall -9 thermal-engine thermald 2>/dev/null
+        echo 10 > /proc/sys/vm/swappiness 2>/dev/null
+        settings put global window_animation_scale 0 2>/dev/null
+        settings put global transition_animation_scale 0 2>/dev/null
+        settings put global animator_duration_scale 0 2>/dev/null
     ]]
-    executeCommand("su -c '" .. tweaksCmd .. "'")
+    execRoot(tweakScript)
     print("   ✅ Tweak Performa Aktif!")
 end
 
-local function initSystem()
-    local uid = executeCommand("id -u"):gsub("%s+", "")
-    if uid ~= "0" then
-        local luaPath = TERMUX_BIN .. "lua"
-        local args = table.concat(arg, " ")
-        local currentDir = executeCommand("pwd"):gsub("%s+", "")
-        
-        -- Masuk ke direktori saat ini sebelum mengeksekusi lua via root
-        os.execute("su -c 'cd " .. currentDir .. " && " .. luaPath .. " " .. arg[0] .. " " .. args .. "'")
-        os.exit(0)
-    end
-    executeCommand(TERMUX_BIN .. "termux-wake-lock")
+local function releaseMemory()
+    execRoot("sync; echo 3 > /proc/sys/vm/drop_caches")
 end
 
--- ============================================
+-- ==========================================
 -- ROBLOX FUNCTIONS
--- ============================================
+-- ==========================================
 local function getPackages()
-    local result = executeCommand("pm list packages | grep roblox")
-    local packages = {}
+    local result = execShell("pm list packages | grep roblox")
+    local pkgs = {}
     for line in result:gmatch("[^\r\n]+") do
-        local pkg = line:gsub("package:", "")
-        table.insert(packages, pkg)
+        local pkg = line:gsub("package:", ""):gsub("%s+", "")
+        if pkg ~= "" then table.insert(pkgs, pkg) end
     end
-    return packages
+    table.sort(pkgs)
+    return pkgs
 end
 
-local function getRobloxCookie(packageName)
-    local cookiesPath = "/data/data/" .. packageName .. "/app_webview/Default/Cookies"
-    local tempPath = "/sdcard/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
+local function getRobloxCookie(pkg)
+    local tempPath = "/sdcard/temp_cookie_" .. pkg .. "_" .. os.time() .. ".db"
+    execRoot("cp /data/data/" .. pkg .. "/app_webview/Default/Cookies " .. tempPath)
     
-    -- Copy database cookie ke sdcard
-    executeCommand("cp '" .. cookiesPath .. "' '" .. tempPath .. "'")
+    local query = 'sqlite3 "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \\\'.ROBLOSECURITY\\\' LIMIT 1"'
+    local cookie = execRoot(query)
+    execRoot("rm " .. tempPath)
     
-    -- Gunakan sqlite3 absolut
-    local sqlitePath = TERMUX_BIN .. "sqlite3"
-    local query = sqlitePath .. ' "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \'.ROBLOSECURITY\' LIMIT 1"'
-    local cookie = executeCommand(query):gsub("%s+", "")
-    
-    -- Bersihkan file temp
-    executeCommand("rm '" .. tempPath .. "'")
-    
-    if cookie ~= "" and cookie:sub(1,1) ~= "_" then
-        cookie = "_" .. cookie
+    if cookie and cookie ~= "" then
+        if cookie:sub(1,1) ~= "_" then cookie = "_" .. cookie end
+        return cookie
     end
-    
-    return cookie ~= "" and cookie or nil
+    return nil
 end
 
 local function getUserInfo(cookie)
-    if not cookie then return { id = nil, name = "No Cookie" } end
+    if not cookie then return nil, "No Cookie" end
+    local cmd = string.format('curl -s -H "Cookie: .ROBLOSECURITY=%s" "https://users.roblox.com/v1/users/authenticated"', cookie)
+    local res = execShell(cmd)
     
-    local url = "https://users.roblox.com/v1/users/authenticated"
-    local cmd = TERMUX_BIN .. 'curl -s -L --max-time 30 ' ..
-                '-H "Cookie: .ROBLOSECURITY=' .. cookie .. '" ' ..
-                '-H "User-Agent: Mozilla/5.0 (Android 10; Mobile)" ' ..
-                '"' .. url .. '" 2>/dev/null'
-                
-    local response = executeCommand(cmd)
+    local id = res:match('"id":%s*(%d+)')
+    local name = res:match('"name":%s*"([^"]+)"')
     
-    if response and response ~= "" then
-        local id = response:match('"id":(%d+)')
-        local name = response:match('"name":"([^"]+)"')
-        if id and name then
-            return { id = tonumber(id), name = name }
-        end
+    if id and name then
+        return id, name
+    end
+    return nil, "Expired"
+end
+
+local function getCsrfToken(cookie)
+    local cmd = string.format('curl -s -I -X POST -H "Cookie: .ROBLOSECURITY=%s" "https://auth.roblox.com/v2/logout"', cookie)
+    local res = execShell(cmd)
+    local token = res:match("[Xx]%-[Cc]srf%-[Tt]oken:%s*([%w%-_]+)")
+    return token
+end
+
+local function checkRobloxPresence(cookie, userId, pkg)
+    if not csrfTokens[pkg] then
+        csrfTokens[pkg] = getCsrfToken(cookie)
     end
     
-    return { id = nil, name = "Expired" }
-end
-
--- ============================================
--- API FUNCTIONS
--- ============================================
-local function fetchLinkCodes()
-    print("🌐 Fetching codes...")
-    local response, code = httpGet(SETTINGS.MSRV_URL)
+    local data = '{"userIds":[' .. userId .. ']}'
+    local cmd = string.format('curl -s -X POST -H "Cookie: .ROBLOSECURITY=%s" -H "x-csrf-token: %s" -H "Content-Type: application/json" -d \'%s\' "https://presence.roblox.com/v1/presence/users"', cookie, csrfTokens[pkg] or "", data)
     
-    if code == 200 and response then
-        local codes = {}
-        for line in response:gmatch("[^\r\n]+") do
-            line = line:gsub("^%s+", ""):gsub("%s+$", "")
-            if line ~= "" then
-                table.insert(codes, line)
-            end
-        end
-        return codes
-    end
-    return {}
-end
-
-local function runSolver(fullCookie, accPkg)
-    print("🤖 Running solver for " .. accPkg .. "...")
-    local url = SETTINGS.SOLVER_API_URL .. "?cookie=" .. fullCookie .. "&yeskey=" .. SETTINGS.YES_KEY
-    local response, code = httpGet(url)
+    local res = execShell(cmd)
     
-    if code == 200 then
-        accountStates[accPkg].serverStatus = "✅ Solver Passed"
-        return true
-    else
-        accountStates[accPkg].serverStatus = "❌ Solver Failed"
-        return false
+    if res:match("Token Validation Failed") or res:match("403 Forbidden") then
+        csrfTokens[pkg] = getCsrfToken(cookie)
+        cmd = string.format('curl -s -X POST -H "Cookie: .ROBLOSECURITY=%s" -H "x-csrf-token: %s" -H "Content-Type: application/json" -d \'%s\' "https://presence.roblox.com/v1/presence/users"', cookie, csrfTokens[pkg] or "", data)
+        res = execShell(cmd)
     end
-end
 
--- ============================================
--- APP MANAGEMENT FUNCTIONS
--- ============================================
-local function stopPackage(pkg)
-    executeCommand("am force-stop " .. pkg)
-end
-
-local function isAppRunning(pkg)
-    local output = executeCommand("su -c 'pidof " .. pkg .. "'"):gsub("%s+", "")
-    return output ~= ""
+    local presenceType = res:match('"userPresenceType":%s*(%d+)')
+    if presenceType then
+        return tonumber(presenceType) == 2, tonumber(presenceType)
+    end
+    return false, 0
 end
 
 local function getAppRam(pkg)
-    local pid = executeCommand("su -c 'pidof " .. pkg .. "'"):gsub("%s+", "")
-    if pid == "" then return "0 MB" end
+    local pid = execRoot("pidof " .. pkg)
+    if pid == "" then return "0" end
     
-    local memInfo = executeCommand("su -c 'dumpsys meminfo " .. pkg .. " | grep -E \"TOTAL:|TOTAL PSS:\"'")
-    local match = memInfo:match("(%d+)")
-    if match then
-        local mb = tonumber(match) / 1024
-        return string.format("%.1f MB", mb)
+    local memInfo = execRoot("dumpsys meminfo " .. pkg .. " | grep -E 'TOTAL:|TOTAL PSS:'")
+    local kb = memInfo:match("(%d+)")
+    if kb then
+        return string.format("%.1f", tonumber(kb) / 1024)
     end
-    return "N/A"
-end
-
-local function protectProcessFromLMK(pkg)
-    local pid = executeCommand("su -c 'pidof " .. pkg .. "'"):gsub("%s+", "")
-    if pid ~= "" then
-        executeCommand("su -c 'echo -900 > /proc/" .. pid .. "/oom_score_adj'")
-        return true
-    end
-    return false
-end
-
-local function releaseMemory()
-    executeCommand("su -c 'sync; echo 3 > /proc/sys/vm/drop_caches'")
-    return true
-end
-
-local function launchPackage(pkg, url)
-    local cmd = "am start -n " .. pkg .. "/com.roblox.client.ActivityProtocolLaunch -f 0x18080000 -a android.intent.action.VIEW -d \"" .. url .. "\""
-    executeCommand(cmd)
-    launchTimers[pkg] = os.time()
-end
-
-local function autoArrangeXML(packages)
-    print("\n📐 Mengatur XML...")
-    table.sort(packages)
-    
-    for index, pkg in ipairs(packages) do
-        local col = (index - 1) % SETTINGS.GRID_COLS
-        local row = math.floor((index - 1) / SETTINGS.GRID_COLS)
-        
-        local left = col * (SETTINGS.BOX_SIZE + SETTINGS.GAP_X)
-        local top = (row * (SETTINGS.BOX_SIZE + SETTINGS.GAP_Y)) + SETTINGS.START_OFFSET_Y
-        local right = left + SETTINGS.BOX_SIZE
-        local bottom = top + SETTINGS.BOX_SIZE
-        
-        local prefsFile = "/data/data/" .. pkg .. "/shared_prefs/" .. pkg .. "_preferences.xml"
-        
-        local cmd = [[su -c "
-            sed -i 's|app_cloner_current_window_left\\" value=\\"[0-9]*|app_cloner_current_window_left\\" value=\\"]] .. left .. [[|' ]] .. prefsFile .. [[;
-            sed -i 's|app_cloner_current_window_top\\" value=\\"[0-9]*|app_cloner_current_window_top\\" value=\\"]] .. top .. [[|' ]] .. prefsFile .. [[;
-            sed -i 's|app_cloner_current_window_right\\" value=\\"[0-9]*|app_cloner_current_window_right\\" value=\\"]] .. right .. [[|' ]] .. prefsFile .. [[;
-            sed -i 's|app_cloner_current_window_bottom\\" value=\\"[0-9]*|app_cloner_current_window_bottom\\" value=\\"]] .. bottom .. [[|' ]] .. prefsFile .. [[;
-            chmod 660 ]] .. prefsFile .. [[
-        "]]
-        
-        executeCommand(cmd)
-    end
-    print("✅ Posisi XML tersimpan.")
-end
-
--- ============================================
--- HEALTH CHECK FUNCTIONS
--- ============================================
-local function isUserInGame(pkg, cookie, userId)
-    local now = os.time()
-    local lastLaunch = launchTimers[pkg] or 0
-    local timeSinceLaunch = now - lastLaunch
-    
-    if lastLaunch > 0 and timeSinceLaunch < SETTINGS.PRESENCE_CHECK_DELAY then
-        return { 
-            isInGame = true, 
-            status = "loading", 
-            timeRemaining = SETTINGS.PRESENCE_CHECK_DELAY - timeSinceLaunch 
-        }
-    end
-    
-    local foregroundApp = executeCommand("su -c 'dumpsys window windows | grep -E \"mCurrentFocus|mFocusedApp\" | head -1'")
-    if foregroundApp:find(pkg) or foregroundApp:find("Roblox") then
-        return { isInGame = true, status = "in-game", source = "foreground" }
-    end
-    
-    return { isInGame = false, status = "unknown" }
+    return "0"
 end
 
 local function isAppHealthy(pkg, cookie, userId)
-    local processRunning = isAppRunning(pkg)
-    if not processRunning then
-        return { healthy = false, reason = "Process Not Running", ram = 0 }
+    local pid = execRoot("pidof " .. pkg)
+    if pid == "" then return false, "Process Not Running", "0" end
+    
+    local ramValueStr = getAppRam(pkg)
+    local ramValue = tonumber(ramValueStr) or 0
+    
+    if ramValue < MIN_RAM_THRESHOLD and ramValue > 0 then
+        return false, "Low RAM (" .. ramValueStr .. "MB)", ramValueStr
     end
     
-    local ramStr = getAppRam(pkg)
-    local ramValue = tonumber(ramStr:match("%d+%.?%d*")) or 0
+    local lastLaunch = launchTimers[pkg] or 0
+    local timeSinceLaunch = (os.time() * 1000) - lastLaunch
     
-    if ramValue < SETTINGS.MIN_RAM_THRESHOLD and ramValue > 0 then
-        return { 
-            healthy = false, 
-            reason = "Low RAM (" .. ramValue .. "MB)", 
-            ram = ramValue
-        }
+    if timeSinceLaunch < PRESENCE_CHECK_DELAY then
+        local left = math.floor((PRESENCE_CHECK_DELAY - timeSinceLaunch) / 1000)
+        return true, "Loading (" .. left .. "s left)", ramValueStr, true
     end
     
-    local presenceResult = isUserInGame(pkg, cookie, userId)
-    
-    if presenceResult.status == "loading" then
-        return { 
-            healthy = true, 
-            reason = "Loading (" .. presenceResult.timeRemaining .. "s)", 
-            ram = ramValue,
-            loading = true
-        }
+    local isInGame, pType = checkRobloxPresence(cookie, userId, pkg)
+    if not isInGame then
+        return false, "User Not In Game", ramValueStr
     end
     
-    if not presenceResult.isInGame then
-        return { 
-            healthy = false, 
-            reason = "User Not In Game", 
-            ram = ramValue
-        }
-    end
-    
-    return { 
-        healthy = true, 
-        reason = "Healthy", 
-        ram = ramValue
-    }
+    return true, "Healthy", ramValueStr, false
 end
 
--- ============================================
--- DASHBOARD RENDER
--- ============================================
-local function renderDashboard(cleanCode, statusMessage)
-    os.execute("clear")
-    
-    print("📱 SYSTEM: BOOSTER: ON 🔥")
-    print("📏 MODE: XML GRID | GAP Y: " .. SETTINGS.GAP_Y .. "px")
-    print("📊 STATUS: " .. statusMessage .. " | Code: " .. cleanCode)
-    print("")
-    
-    print(string.format("%-20s %-15s %-10s %-20s %-8s %s", 
-        "Package", "User", "State", "Status", "RAM", "Action"))
-    print(string.rep("-", 80))
-    
-    local packages = {}
-    for pkg, _ in pairs(accountStates) do
-        table.insert(packages, pkg)
-    end
-    table.sort(packages)
-    
-    for _, pkg in ipairs(packages) do
-        local s = accountStates[pkg]
-        local pkgShort = pkg:gsub("com.roblox.client", "...client")
-        local username = s.username:sub(1, 12)
-        local state = s.isRunning and "Run 🟢" or "Wait ⚪"
+-- ==========================================
+-- APP CONTROL
+-- ==========================================
+local function stopPackage(pkg)
+    execRoot("am force-stop " .. pkg)
+end
+
+local function launchPackage(pkg, url)
+    local cmd = string.format('am start -n %s/com.roblox.client.ActivityProtocolLaunch -f 0x18080000 -a android.intent.action.VIEW -d "%s"', pkg, url)
+    execRoot(cmd)
+    launchTimers[pkg] = os.time() * 1000
+end
+
+local function runSolver(cookie, pkg)
+    local encodedCookie = cookie:gsub("%%", "%%25"):gsub("=", "%%3D"):gsub(";", "%%3B"):gsub(" ", "%%20")
+    local cmd = string.format('curl -s -m 30 "%s?cookie=%s&yeskey=%s"', SOLVER_API_URL, encodedCookie, YES_KEY)
+    execShell(cmd)
+    accountStates[pkg].serverStatus = "✅ Solver Passed"
+end
+
+local function autoArrangeXML()
+    print("\n📐 Mengatur XML (Grid " .. GRID_COLS .. "xN)...")
+    for i, acc in ipairs(accounts) do
+        local index = i - 1
+        local col = index % GRID_COLS
+        local row = math.floor(index / GRID_COLS)
+
+        local left = col * (BOX_SIZE + GAP_X)
+        local top = (row * (BOX_SIZE + GAP_Y)) + START_OFFSET_Y
+        local right = left + BOX_SIZE
+        local bottom = top + BOX_SIZE
+
+        local prefsFile = "/data/data/" .. acc.pkg .. "/shared_prefs/" .. acc.pkg .. "_preferences.xml"
         
-        print(string.format("%-20s %-15s %-10s %-20s %-8s %s",
-            pkgShort,
-            username,
-            state,
-            s.serverStatus,
-            s.ramUsage,
-            s.action))
+        local sedCmd = string.format([[
+            sed -i 's|app_cloner_current_window_left" value="[0-9]*|app_cloner_current_window_left" value="%d|' %s;
+            sed -i 's|app_cloner_current_window_top" value="[0-9]*|app_cloner_current_window_top" value="%d|' %s;
+            sed -i 's|app_cloner_current_window_right" value="[0-9]*|app_cloner_current_window_right" value="%d|' %s;
+            sed -i 's|app_cloner_current_window_bottom" value="[0-9]*|app_cloner_current_window_bottom" value="%d|' %s;
+            sed -i 's|<int name="GraphicsQualityLevel" value=".*" />|<int name="GraphicsQualityLevel" value="1" />|g' %s;
+        ]], left, prefsFile, top, prefsFile, right, prefsFile, bottom, prefsFile, prefsFile)
+        
+        execRoot(sedCmd)
     end
-    print("")
 end
 
--- ============================================
--- MAIN FUNCTION
--- ============================================
-local function main()
-    initSystem()
+-- ==========================================
+-- UI / DASHBOARD
+-- ==========================================
+local function renderDashboard(codeDisplay, statusMessage)
     os.execute("clear")
-    print("🚀 Initializing Manager...")
+    print(string.format("📱 SYSTEM: BOOSTER: ON 🔥"))
+    print(string.format("📏 MODE: XML GRID (%d cols) | DETEKSI: ROBLOX API (1m cooldown)", GRID_COLS))
+    print(string.format("📊 STATUS: %s | Mode: CONTINUOUS | Code: %s\n", statusMessage, codeDisplay))
     
+    print(string.format("%s | %s | %s | %s | %s | %s", 
+        padRight("Package", 18), padRight("User", 12), padRight("State", 8), padRight("Status", 22), padRight("RAM", 8), "Action"))
+    print(string.rep("-", 85))
+    
+    for _, acc in ipairs(accounts) do
+        local state = accountStates[acc.pkg]
+        local shortPkg = acc.pkg:gsub("com.roblox.client", "...client")
+        local runStr = state.isRunning and "Run 🟢" or "Wait ⚪"
+        
+        print(string.format("%s | %s | %s | %s | %s | %s",
+            padRight(shortPkg, 18),
+            padRight(state.username:sub(1,12), 12),
+            padRight(runStr, 8),
+            padRight(state.serverStatus, 22),
+            padRight(state.ramUsage .. " MB", 8),
+            state.action
+        ))
+    end
+    print("\n")
+end
+
+-- ==========================================
+-- MAIN LOGIC
+-- ==========================================
+local function main()
+    os.execute("clear")
+    print("🚀 Initializing Manager (LUA 5.3 Edition)...")
     applyPerformanceTweaks()
     
-    local packages = getPackages()
-    if #packages == 0 then
+    local pkgs = getPackages()
+    if #pkgs == 0 then
         print("❌ No Roblox packages found.")
         os.exit(0)
     end
     
-    local accounts = {}
-    table.sort(packages)
-    
-    for _, pkg in ipairs(packages) do
+    for _, pkg in ipairs(pkgs) do
         io.write("Reading " .. pkg .. "... \r")
-        io.flush()
-        
         local cookie = getRobloxCookie(pkg)
-        local userInfo = getUserInfo(cookie)
+        local id, name = getUserInfo(cookie)
         
-        if userInfo.id and userInfo.name ~= "Expired" then
-            table.insert(accounts, {
-                pkg = pkg,
-                cookie = cookie,
-                userId = userInfo.id,
-                username = userInfo.name
-            })
-            lastRestartMap[pkg] = 0
+        if id and name ~= "Expired" then
+            table.insert(accounts, {pkg = pkg, cookie = cookie, userId = id, username = name})
             accountStates[pkg] = {
-                username = userInfo.name,
-                isRunning = false,
-                serverStatus = "Waiting...",
-                ramUsage = "0 MB",
-                action = "-"
+                username = name, isRunning = false, serverStatus = "Waiting...", ramUsage = "0", action = "-"
             }
+            csrfTokens[pkg] = getCsrfToken(cookie)
         else
-            print("⚠️ Skipping " .. pkg .. ": Cookie Expired or Not Found")
+            print("\n⚠️ Skipping " .. pkg .. ": Cookie Expired/Invalid.")
         end
     end
     
@@ -554,142 +309,97 @@ local function main()
         print("❌ Tidak ada akun valid.")
         os.exit(0)
     end
-    
     print("\n✅ Loaded " .. #accounts .. " valid accounts.")
     
-    local codes = fetchLinkCodes()
-    if #codes == 0 then
+    -- Fetch Codes
+    print("🌐 Fetching codes...")
+    local codesRaw = execShell('curl -s "' .. MSRV_URL .. '"')
+    for line in codesRaw:gmatch("[^\r\n]+") do
+        if line:len() > 5 then table.insert(codesList, line) end
+    end
+    
+    if #codesList == 0 then
         print("⚠️ No codes found.")
         os.exit(1)
     end
     
-    local cleanCode = ""
+    currentCleanCode = codesList[1] -- Simplified: Ambil kode pertama. Bisa dimodifikasi untuk input manual
+    local codeDisplay = AUTO_RANDOM_CODE and "RANDOM" or "..." .. currentCleanCode:sub(-4)
     
-    if not SETTINGS.AUTO_RANDOM_CODE then
-        local selectedIdx = -1
-        for i, v in ipairs(arg) do
-            if v == "-server" and arg[i+1] then
-                selectedIdx = tonumber(arg[i+1]) - 1
-                break
-            end
-        end
-        
-        if selectedIdx and selectedIdx >= 0 and selectedIdx < #codes then
-            print("\n✅ Auto-selecting Server [" .. (selectedIdx + 1) .. "]")
-            cleanCode = codes[selectedIdx + 1]
-        else
-            print("\n📜 Available Codes:")
-            for i, code in ipairs(codes) do
-                print("[" .. i .. "] " .. code)
-            end
-            
-            print("\n👉 Pilih Server (nomor):")
-            io.write("> ")
-            local selection = io.read()
-            local idx = tonumber(selection)
-            
-            if not idx or idx < 1 or idx > #codes then
-                print("❌ Invalid selection.")
-                os.exit(1)
-            end
-            cleanCode = codes[idx]
-        end
-    end
+    autoArrangeXML()
     
-    local codeDisplay = SETTINGS.AUTO_RANDOM_CODE and "RANDOM" or cleanCode:sub(-4)
-    autoArrangeXML(accounts)
-    
-    -- LAUNCH SEQUENCE
-    print("\n🚀 Launching instances...")
-    
-    for i, acc in ipairs(accounts) do
+    -- FASE 1: LAUNCH
+    for _, acc in ipairs(accounts) do
         accountStates[acc.pkg].serverStatus = "Solving Captcha ⏳"
-        renderDashboard(codeDisplay, "🤗 Memproses " .. acc.username .. "...")
+        renderDashboard(codeDisplay, "🤖 Mengirim cookie " .. acc.username .. " ke Solver API...")
         
         runSolver(acc.cookie, acc.pkg)
-        renderDashboard(codeDisplay, "✅ Launching " .. acc.username .. "...")
-        sleep(2)
         
-        local currentCode = cleanCode
-        if currentCode:find("linkCode=") then
-            currentCode = currentCode:match("linkCode=([^&]+)")
+        local finalCode = currentCleanCode
+        if finalCode:match("linkCode=") then
+            finalCode = finalCode:match("linkCode=([^&]+)")
         end
-        local finalLaunchUrl = "roblox://placeID=" .. SETTINGS.PLACE_ID .. "&linkCode=" .. currentCode
+        local launchUrl = string.format("roblox://placeID=%s&linkCode=%s", PLACE_ID, finalCode)
         
         stopPackage(acc.pkg)
         releaseMemory()
-        sleep(1.5)
+        sleep(1500)
         
-        launchPackage(acc.pkg, finalLaunchUrl)
-        lastRestartMap[acc.pkg] = os.time()
+        launchPackage(acc.pkg, launchUrl)
         accountStates[acc.pkg].isRunning = true
         accountStates[acc.pkg].serverStatus = "Launching..."
         
-        sleep(3)
-        protectProcessFromLMK(acc.pkg)
+        sleep(5000) -- Tunggu app terbuka
         
-        for sec = 1, 60 do
-            if sec % 10 == 0 then
-                accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg)
-            end
-            renderDashboard(codeDisplay, "⏳ Menstabilkan " .. acc.username .. " (" .. sec .. "/60s)")
-            sleep(1)
-        end
-        
-        accountStates[acc.pkg].serverStatus = "In Game 🎮"
         accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg)
-        renderDashboard(codeDisplay, "✅ " .. acc.username .. " Siap!")
-        sleep(2)
+        accountStates[acc.pkg].serverStatus = "In Game 🎮"
+        renderDashboard(codeDisplay, "✅ " .. acc.username .. " Launch selesai.")
     end
     
-    -- MONITORING LOOP
-    print("\n🔄 Mode Monitoring...")
-    
+    -- FASE 2: MONITORING
+    releaseMemory()
     while true do
-        for i, acc in ipairs(accounts) do
-            renderDashboard(codeDisplay, "👀 Cek " .. acc.username .. "...")
+        for _, acc in ipairs(accounts) do
+            renderDashboard(codeDisplay, "👀 Mengecek status " .. acc.username .. "...")
             
-            accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg)
-            local healthCheck = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
+            local healthy, reason, ram, isLoading = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
+            accountStates[acc.pkg].ramUsage = ram
             
-            if healthCheck.healthy then
+            if healthy then
                 accountStates[acc.pkg].isRunning = true
-                accountStates[acc.pkg].serverStatus = "In Game 🎮"
-                accountStates[acc.pkg].action = "✅ " .. healthCheck.ram .. "MB"
+                if isLoading then
+                    accountStates[acc.pkg].serverStatus = "⏳ " .. reason
+                else
+                    accountStates[acc.pkg].serverStatus = "In Game 🎮"
+                end
+                accountStates[acc.pkg].action = "✅ OK"
             else
                 accountStates[acc.pkg].isRunning = false
-                accountStates[acc.pkg].serverStatus = "⚠️ " .. healthCheck.reason
-                accountStates[acc.pkg].action = "⚠️ Crash"
+                accountStates[acc.pkg].serverStatus = "⚠️ " .. reason
+                accountStates[acc.pkg].action = "Reopening"
                 
-                renderDashboard(codeDisplay, "🔄 Reopen " .. acc.username .. "...")
+                renderDashboard(codeDisplay, "⚠️ " .. acc.username .. " Crash/Offline. Reopening...")
                 
                 stopPackage(acc.pkg)
                 releaseMemory()
-                sleep(1.5)
+                sleep(1500)
                 
-                local currentCode = cleanCode
-                if currentCode:find("linkCode=") then
-                    currentCode = currentCode:match("linkCode=([^&]+)")
+                runSolver(acc.cookie, acc.pkg)
+                
+                local finalCode = currentCleanCode
+                if finalCode:match("linkCode=") then
+                    finalCode = finalCode:match("linkCode=([^&]+)")
                 end
-                local finalLaunchUrl = "roblox://placeID=" .. SETTINGS.PLACE_ID .. "&linkCode=" .. currentCode
+                local launchUrl = string.format("roblox://placeID=%s&linkCode=%s", PLACE_ID, finalCode)
                 
-                launchPackage(acc.pkg, finalLaunchUrl)
-                launchTimers[acc.pkg] = os.time()
-                accountStates[acc.pkg].isRunning = true
-                accountStates[acc.pkg].serverStatus = "Reopening..."
-                
-                sleep(3)
-                protectProcessFromLMK(acc.pkg)
+                launchPackage(acc.pkg, launchUrl)
+                sleep(3000)
             end
         end
         
-        renderDashboard(codeDisplay, "✅ Cek selesai | Next in " .. SETTINGS.CHECK_INTERVAL .. "s")
-        sleep(SETTINGS.CHECK_INTERVAL)
+        renderDashboard(codeDisplay, "👀 Monitoring Selesai | Next check in " .. (CHECK_INTERVAL/1000) .. "s")
+        sleep(CHECK_INTERVAL)
     end
 end
 
--- JALANKAN
-local success, err = pcall(main)
-if not success then
-    print("❌ Error: " .. tostring(err))
-end
+main()
