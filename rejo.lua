@@ -24,6 +24,18 @@ local function split(s, delimiter)
     return result
 end
 
+-- URL ENCODER MURNI LUA (Pengganti Python)
+local function urlencode(str)
+    if str then
+        str = string.gsub(str, "\n", "\r\n")
+        str = string.gsub(str, "([^%w %-%_%.%~])", function(c)
+            return string.format("%%%02X", string.byte(c))
+        end)
+        str = string.gsub(str, " ", "+")
+    end
+    return str
+end
+
 -- --- MANAJEMEN KONFIGURASI (JSON) ---
 local config_file = "config.json"
 local config = {}
@@ -37,7 +49,7 @@ if file_exists(config_file) then
     local f = io.open(config_file, "r")
     local content = f:read("*a")
     f:close()
-    -- Parsing JSON sederhana tanpa library eksternal
+    
     config.YES_KEY = content:match('"YES_KEY"%s*:%s*"([^"]+)"')
     config.PLACE_ID = content:match('"PLACE_ID"%s*:%s*"([^"]+)"')
     config.MSRV_URL = content:match('"MSRV_URL"%s*:%s*"([^"]+)"')
@@ -58,7 +70,6 @@ else
     io.write("Masukkan MSRV_URL (tanpa default): ")
     config.MSRV_URL = io.read()
     
-    -- Simpan ke config.json
     local f = io.open(config_file, "w")
     local json_str = string.format('{\n  "YES_KEY": "%s",\n  "PLACE_ID": "%s",\n  "MSRV_URL": "%s"\n}', 
         config.YES_KEY, config.PLACE_ID, config.MSRV_URL)
@@ -168,7 +179,6 @@ local function checkRobloxPresence(cookie, userId, pkg)
     
     local res = exec(cmd)
     
-    -- Simple error checking (Token validation failed = 403)
     if res:match("Token Validation Failed") then
         csrfTokens[pkg] = getCsrfToken(cookie)
         token = csrfTokens[pkg] or ""
@@ -316,7 +326,7 @@ end
 
 local function renderDashboard(codeDisplay, statusMsg)
     os.execute("clear")
-    print("📱 SYSTEM: BOOSTER ON 🔥 | Mode: LUA 5.3")
+    print("📱 SYSTEM: BOOSTER ON 🔥 | Mode: LUA 5.3 (Ultra Lite)")
     print(string.format("📏 MODE: XML GRID (%d cols) | GAP Y: %dpx", GRID_COLS, GAP_Y))
     print(string.format("📊 STATUS: %s | Code: %s\n", statusMsg, codeDisplay))
     
@@ -338,7 +348,9 @@ local function renderDashboard(codeDisplay, statusMsg)
 end
 
 local function runSolver(fullCookie, accPkg)
-    local cmd = string.format("curl -s '%s?cookie=%s&yeskey=%s'", SOLVER_API_URL, exec("python -c \"import urllib.parse; print(urllib.parse.quote('''" .. fullCookie .. "'''))\" 2>/dev/null") or fullCookie, config.YES_KEY)
+    -- Menggunakan fungsi urlencode murni Lua, bukan Python lagi!
+    local encodedCookie = urlencode(fullCookie)
+    local cmd = string.format("curl -s '%s?cookie=%s&yeskey=%s'", SOLVER_API_URL, encodedCookie, config.YES_KEY)
     local res = exec(cmd)
     
     if res and res ~= "" then
