@@ -3,10 +3,12 @@
 local os = require("os")
 local io = require("io")
 
--- BERSIHKAN LAYAR
+-- BERSIHKAN LAYAR AWAL
 os.execute("clear")
 
--- --- FUNGSI UTILITAS DASAR ---
+-- ==========================================
+-- FUNGSI UTILITAS DASAR & RESPONSIVE UI
+-- ==========================================
 local function sleep(ms)
     os.execute("sleep " .. tonumber(ms) / 1000)
 end
@@ -30,7 +32,30 @@ local function urlencode(str)
     return str
 end
 
--- --- MANAJEMEN KONFIGURASI (JSON) ---
+-- Mendeteksi lebar terminal (Responsive)
+local function getTermWidth()
+    local f = io.popen("stty size 2>/dev/null")
+    if f then
+        local res = f:read("*a")
+        f:close()
+        local r, c = res:match("(%d+)%s+(%d+)")
+        if c then return tonumber(c) end
+    end
+    return 60 -- Default jika gagal deteksi
+end
+
+-- Memotong teks panjang agar tidak merusak layout
+local function truncate(str, maxLen)
+    if not str then return "" end
+    if #str > maxLen then
+        return str:sub(1, maxLen - 2) .. ".."
+    end
+    return str
+end
+
+-- ==========================================
+-- MANAJEMEN KONFIGURASI (JSON)
+-- ==========================================
 local config_file = "config.json"
 local config = {}
 
@@ -58,8 +83,10 @@ if file_exists(config_file) then
     config.PLACE_ID = content:match('"PLACE_ID"%s*:%s*"([^"]+)"')
     config.MSRV_URL = content:match('"MSRV_URL"%s*:%s*"([^"]+)"')
 else
-    print("🚀 SETUP KONFIGURASI:")
-    print("---------------------------------")
+    local w = getTermWidth()
+    print(string.rep("=", w))
+    print(" 🚀 SETUP KONFIGURASI AWAL")
+    print(string.rep("=", w))
     
     io.write("🔑 YES_KEY Solver  : ")
     config.YES_KEY = io.read()
@@ -91,7 +118,9 @@ else
     os.execute("clear")
 end
 
--- --- CONFIGURATION LENGKAP ---
+-- ==========================================
+-- CONFIGURATION LENGKAP PENGATURAN MESIN
+-- ==========================================
 local SOLVER_API_URL = "http://134.199.219.230:3000/solve"
 local AUTO_RANDOM_CODE = false
 
@@ -110,7 +139,9 @@ local accountStates = {}
 local csrfTokens = {}
 local launchTimers = {}
 
--- --- FUNGSI SISTEM ---
+-- ==========================================
+-- FUNGSI SISTEM (TETAP SAMA PERSIS)
+-- ==========================================
 local function applyPerformanceTweaks()
     print("⚙️  Menerapkan Tweak Performa...")
     local tweaksCmd = [[
@@ -269,7 +300,6 @@ local function fetchLinkCodes()
     print("🌐 Mengunduh kode server...")
     local res = exec("curl -sL '" .. config.MSRV_URL .. "'")
     local codes = {}
-    -- Fix CRLF: Membersihkan setiap baris dari karakter aneh dan spasi
     for line in res:gmatch("[^\r\n]+") do
         local clean_code = line:gsub("[%c%s]", "") 
         if clean_code ~= "" and not clean_code:match("<html") then
@@ -279,141 +309,79 @@ local function fetchLinkCodes()
     return codes
 end
 
--- FUNGSI RENDER DASHBOARD YANG DIPERBAIKI
-local function renderDashboard(codeDisplay, statusMsg, selectedAccount)
-    -- Simpan cursor position dan clear screen dengan lebih bersih
-    io.write("\027[2J\027[H") -- ANSI escape clear screen dan home
-    io.flush()
+-- ==========================================
+-- RENDER DASHBOARD (RESPONSIVE)
+-- ==========================================
+local function renderDashboard(codeDisplay, statusMsg)
+    os.execute("clear")
+    local width = getTermWidth()
+    width = width < 40 and 40 or width -- Pastikan tidak kurang dari 40
     
-    local terminalWidth = 40 -- Asumsi lebar terminal HP
+    local sep = string.rep("=", width)
+    local sepThin = string.rep("-", width)
     
-    -- Header
-    print("╔" .. string.rep("═", terminalWidth-2) .. "╗")
-    print("║" .. string.format(" %-37s", "🔥 LUA BOOSTER - MONITORING") .. "║")
-    print("╠" .. string.rep("═", terminalWidth-2) .. "╣")
-    print("║ 🎯 Code: " .. string.format("%-32s", codeDisplay) .. "║")
-    print("║ 📍 Status: " .. string.format("%-31s", statusMsg:sub(1, 30)) .. "║")
-    print("╠" .. string.rep("═", terminalWidth-2) .. "╣")
+    -- HEADER
+    print(sep)
+    local title = "🔥 LUA SYSTEM BOOSTER 🔥"
+    local pad = math.floor((width - #title) / 2)
+    print(string.rep(" ", pad > 0 and pad or 0) .. title)
+    print(sep)
+    print(string.format(" 🎯 Code  : %s", truncate(codeDisplay, width - 15)))
+    print(string.format(" 📌 Status: %s", truncate(statusMsg, width - 15)))
+    print(sepThin)
     
-    -- List Akun (lebih ringkas)
+    -- DATA AKUN
     local sorted_pkgs = {}
     for pkg in pairs(accountStates) do table.insert(sorted_pkgs, pkg) end
     table.sort(sorted_pkgs)
     
-    for i, pkg in ipairs(sorted_pkgs) do
-        local s = accountStates[pkg]
-        local shortUser = s.username:len() > 10 and s.username:sub(1, 8)..".." or s.username
-        local statusIcon = s.isRunning and "🟢" or "⚪"
-        local ramDisplay = s.ramUsage:len() > 6 and s.ramUsage:sub(1, 5).."+" or s.ramUsage
+    if width >= 65 then
+        -- TABLE VIEW (Layar Lebar / Lanskap)
+        local c1, c2, c3, c4 = 14, 12, 8, 4 -- Lebar Kolom Tetap
+        local c5 = width - (c1 + c2 + c3 + c4 + 17) -- Sisa lebar untuk Status
+        c5 = c5 < 10 and 10 or c5
         
-        -- Baris 1: Username + Status
-        print("║ " .. statusIcon .. " " .. string.format("%-12s", shortUser) .. 
-              " RAM:" .. string.format("%-6s", ramDisplay) .. "      ║")
+        print(string.format(" %-"..c1.."s | %-"..c2.."s | %-"..c3.."s | %-"..c4.."s | %-"..c5.."s", "Package", "User", "RAM", "Run", "Status"))
+        print(sepThin)
         
-        -- Baris 2: Server Status (dipotong jika terlalu panjang)
-        local serverMsg = s.serverStatus
-        if serverMsg:len() > 34 then
-            serverMsg = serverMsg:sub(1, 31).."..."
+        for _, pkg in ipairs(sorted_pkgs) do
+            local s = accountStates[pkg]
+            local shortPkg = truncate(pkg:gsub("com%.roblox%.client", "..client"), c1)
+            local shortUser = truncate(s.username, c2)
+            local stateIcon = s.isRunning and "🟢" or "⚪"
+            local shortStat = truncate(s.serverStatus, c5)
+            
+            print(string.format(" %-"..c1.."s | %-"..c2.."s | %-"..c3.."s | %-"..c4.."s | %-"..c5.."s", shortPkg, shortUser, s.ramUsage, stateIcon, shortStat))
         end
-        print("║   └─ " .. serverMsg .. string.rep(" ", terminalWidth - 8 - serverMsg:len()) .. "║")
-        
-        -- Garis pemisah antar akun (kecuali yang terakhir)
-        if i < #sorted_pkgs then
-            print("║" .. string.rep("·", terminalWidth-2) .. "║")
-        end
-    end
-    
-    -- Footer
-    print("╚" .. string.rep("═", terminalWidth-2) .. "╝")
-    print("") -- Spasi untuk input
-    io.flush()
-end
-
--- FUNGSI SELECT CODE YANG DIPERBAIKI
-local function selectServerCode(codes)
-    -- Clear screen dengan lebih baik
-    io.write("\027[2J\027[H")
-    io.flush()
-    
-    print("╔══════════════════════════════════════╗")
-    print("║      📋 PILIH SERVER CODE            ║")
-    print("╠══════════════════════════════════════╣")
-    
-    -- Tampilkan daftar code dengan format yang lebih rapi
-    local maxDisplay = 8 -- Maksimal 8 code per halaman
-    local totalPages = math.ceil(#codes / maxDisplay)
-    local currentPage = 1
-    
-    while true do
-        local startIdx = (currentPage - 1) * maxDisplay + 1
-        local endIdx = math.min(startIdx + maxDisplay - 1, #codes)
-        
-        -- Clear area daftar code
-        for i = 1, maxDisplay + 2 do
-            io.write("\027[1A\027[2K") -- Hapus baris sebelumnya
-        end
-        
-        print("║ Halaman " .. currentPage .. "/" .. totalPages .. "                      ║")
-        print("╠══════════════════════════════════════╣")
-        
-        for i = startIdx, endIdx do
-            local code = codes[i]
-            -- Format tampilan code
-            local displayCode
-            if code:len() > 25 then
-                displayCode = code:sub(1, 10) .. "..." .. code:sub(-10)
-            else
-                displayCode = code
-            end
-            print(string.format("║ [%2d] %-32s ║", i, displayCode))
-        end
-        
-        -- Isi sisa baris jika kurang
-        for i = endIdx + 1, startIdx + maxDisplay - 1 do
-            print("║ " .. string.rep(" ", 36) .. "║")
-        end
-        
-        print("╠══════════════════════════════════════╣")
-        print("║ Navigasi: n=halaman berikutnya      ║")
-        print("║           p=halaman sebelumnya      ║")
-        print("║           q=batal                    ║")
-        print("╚══════════════════════════════════════╝")
-        
-        io.write("👉 Pilih nomor [1-" .. #codes .. "] atau (n/p): ")
-        io.flush()
-        
-        local input = io.read()
-        if input == "n" and currentPage < totalPages then
-            currentPage = currentPage + 1
-        elseif input == "p" and currentPage > 1 then
-            currentPage = currentPage - 1
-        elseif input == "q" then
-            return nil
-        else
-            local sel = tonumber(input)
-            if sel and sel >= 1 and sel <= #codes then
-                return sel
-            else
-                print("⚠️ Pilihan tidak valid, tekan Enter untuk melanjutkan...")
-                io.read()
-            end
+    else
+        -- LIST VIEW (Layar Sempit / Potret)
+        for _, pkg in ipairs(sorted_pkgs) do
+            local s = accountStates[pkg]
+            local shortUser = truncate(s.username, 14)
+            local stateIcon = s.isRunning and "🟢 RUN" or "⚪ WAIT"
+            
+            print(string.format(" 👤 %-14s | %s | 💾 %s", shortUser, stateIcon, s.ramUsage))
+            print(string.format("    └─ %s", truncate(s.serverStatus, width - 8)))
         end
     end
+    print(sep .. "\n")
 end
 
 local function runSolver(fullCookie, accPkg)
     local cmd = string.format("curl -s '%s?cookie=%s&yeskey=%s'", SOLVER_API_URL, urlencode(fullCookie), config.YES_KEY)
     local res = exec(cmd)
     if res and res ~= "" then
-        accountStates[accPkg].serverStatus = "✅ Captcha Selesai"
+        accountStates[accPkg].serverStatus = "✅ Captcha Terselesaikan"
         return true
     else
-        accountStates[accPkg].serverStatus = "❌ Error API"
+        accountStates[accPkg].serverStatus = "❌ Error API Solver"
         return false
     end
 end
 
--- --- MAIN LOGIC ---
+-- ==========================================
+-- MAIN LOGIC (EKSEKUSI UTAMA)
+-- ==========================================
 applyPerformanceTweaks()
 
 local packages = getPackages()
@@ -427,7 +395,7 @@ for _, pkg in ipairs(packages) do
     local userInfo = getUserInfo(cookie)
     if userInfo.id and userInfo.name ~= "Expired" then
         table.insert(accounts, { pkg = pkg, cookie = cookie, userId = userInfo.id, username = userInfo.name })
-        accountStates[pkg] = { username = userInfo.name, isRunning = false, serverStatus = "Menunggu...", ramUsage = "0 MB" }
+        accountStates[pkg] = { username = userInfo.name, isRunning = false, serverStatus = "Menunggu Giliran...", ramUsage = "0 MB" }
         csrfTokens[pkg] = getCsrfToken(cookie)
     end
 end
@@ -440,15 +408,20 @@ if #codes == 0 then print("⚠️ Gagal mendapat kode server."); os.exit(1) end
 
 local cleanCode = ""
 if not AUTO_RANDOM_CODE then
-    -- Tampilkan dialog pemilihan server yang sudah diperbaiki
-    local selectedIndex = selectServerCode(codes)
-    if not selectedIndex then
-        print("\n❌ Pembatalan oleh user.")
-        os.exit(0)
+    local w = getTermWidth()
+    print("\n" .. string.rep("-", w))
+    print("📜 DAFTAR SERVER TERSEDIA:")
+    print(string.rep("-", w))
+    for i, c in ipairs(codes) do
+        local display_c = #c > 16 and (c:sub(1, 6) .. "..." .. c:sub(-6)) or c
+        print(string.format(" [%2d] %s", i, display_c))
     end
-    cleanCode = codes[selectedIndex]
-    print("\n✅ Memilih code: " .. cleanCode:sub(1, 20) .. "...")
-    sleep(1500)
+    print(string.rep("-", w))
+    io.write("👉 Pilih server [1-"..#codes.."]: ")
+    
+    local sel = tonumber(io.read())
+    if not sel or sel < 1 or sel > #codes then print("❌ Pilihan tidak valid."); os.exit(1) end
+    cleanCode = codes[sel]
 end
 
 local codeDisplay = AUTO_RANDOM_CODE and "RANDOM" or "..." .. string.sub(cleanCode, -5)
@@ -458,10 +431,10 @@ autoArrangeXML(pkgs_only)
 
 -- --- FASE 1: LAUNCH ---
 for _, acc in ipairs(accounts) do
-    accountStates[acc.pkg].serverStatus = "Solver API ⏳"
-    renderDashboard(codeDisplay, "Sending to solver...")
+    accountStates[acc.pkg].serverStatus = "Memproses Captcha ⏳"
+    renderDashboard(codeDisplay, "Mengirim cookie ke API...")
     runSolver(acc.cookie, acc.pkg)
-    renderDashboard(codeDisplay, "Launching Roblox...")
+    renderDashboard(codeDisplay, "Meluncurkan Roblox...")
     sleep(1500)
     
     local finalLaunchUrl = string.format("roblox://placeID=%s&linkCode=%s", config.PLACE_ID, (cleanCode:match("linkCode=([^&]+)") or cleanCode))
@@ -474,7 +447,7 @@ for _, acc in ipairs(accounts) do
         
         launchPackage(acc.pkg, finalLaunchUrl)
         accountStates[acc.pkg].isRunning = true
-        accountStates[acc.pkg].serverStatus = "Opening App..."
+        accountStates[acc.pkg].serverStatus = "Membuka Aplikasi..."
         
         sleep(3000)
         protectProcessFromLMK(acc.pkg)
@@ -482,23 +455,23 @@ for _, acc in ipairs(accounts) do
         local crashed = false
         for sec = 1, 60 do
             if sec % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-            renderDashboard(codeDisplay, string.format("Stabilizing %s (%d/60s)", acc.username, sec))
+            renderDashboard(codeDisplay, string.format("Stabilisasi %s (%ds/60s)", truncate(acc.username, 8), sec))
             sleep(1000)
             
             local healthCheck = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
             if not healthCheck.healthy then
                 accountStates[acc.pkg].serverStatus = "⚠️ Crash: " .. healthCheck.reason
-                renderDashboard(codeDisplay, "Crash detected. Reopen...")
+                renderDashboard(codeDisplay, "Terjadi Crash. Reopen...")
                 crashed = true
                 sleep(2000)
                 break
             elseif healthCheck.loading then
-                accountStates[acc.pkg].serverStatus = "⏳ Loading..."
+                accountStates[acc.pkg].serverStatus = "⏳ Sedang Loading..."
             end
         end
         
         if not crashed then
-            accountStates[acc.pkg].serverStatus = "🎮 Stable In-Game"
+            accountStates[acc.pkg].serverStatus = "🎮 Stabil di Dalam Game"
             isStable = true
             sleep(1500)
         end
@@ -511,11 +484,11 @@ releaseMemory()
 while true do
     local anyCrashed = false
     for _, acc in ipairs(accounts) do
-        renderDashboard(codeDisplay, "Monitoring...")
+        renderDashboard(codeDisplay, "Monitoring rutin...")
         
         local cookieStatus = getUserInfo(acc.cookie)
         if not cookieStatus.id or cookieStatus.name == "Expired" then
-            accountStates[acc.pkg].serverStatus = "❌ Account Banned"
+            accountStates[acc.pkg].serverStatus = "❌ Akun Ter-Banned (403)"
             accountStates[acc.pkg].isRunning = false
             stopPackage(acc.pkg)
             goto continue
@@ -527,14 +500,14 @@ while true do
         
         if healthCheck.healthy then
             accountStates[acc.pkg].isRunning = true
-            accountStates[acc.pkg].serverStatus = healthCheck.loading and "⏳ Loading..." or "🎮 In-Game"
+            accountStates[acc.pkg].serverStatus = healthCheck.loading and "⏳ Proses Loading..." or "🎮 Aman di Dalam Game"
         else
             anyCrashed = true
             local isStable = false
             while not isStable do
                 accountStates[acc.pkg].isRunning = false
                 accountStates[acc.pkg].serverStatus = "⚠️ Reconnecting..."
-                renderDashboard(codeDisplay, "Recovering connection...")
+                renderDashboard(codeDisplay, "Memulihkan koneksi...")
                 
                 stopPackage(acc.pkg)
                 releaseMemory()
@@ -550,12 +523,12 @@ while true do
                 local crashedDuringRec = false
                 for w = 1, 60 do
                     if w % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-                    renderDashboard(codeDisplay, string.format("Recovery %s (%d/60s)", acc.username, w))
+                    renderDashboard(codeDisplay, string.format("Pemulihan %s (%ds/60s)", truncate(acc.username, 8), w))
                     sleep(1000)
                     
                     local recoveryHealth = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
                     if not recoveryHealth.healthy then
-                        accountStates[acc.pkg].serverStatus = "⚠️ Recovery failed..."
+                        accountStates[acc.pkg].serverStatus = "⚠️ Gagal pulih. Coba lagi..."
                         crashedDuringRec = true
                         sleep(2000)
                         break
@@ -563,7 +536,7 @@ while true do
                 end
                 if not crashedDuringRec then
                     accountStates[acc.pkg].isRunning = true
-                    accountStates[acc.pkg].serverStatus = "🎮 Recovered"
+                    accountStates[acc.pkg].serverStatus = "🎮 Berhasil Pulih"
                     isStable = true
                 end
             end
@@ -572,6 +545,6 @@ while true do
     end
     
     if anyCrashed then releaseMemory() end
-    renderDashboard(codeDisplay, "Standby | Next check " .. (CHECK_INTERVAL/1000) .. "s")
+    renderDashboard(codeDisplay, "Standby | Cek lagi " .. (CHECK_INTERVAL/1000) .. "s")
     sleep(CHECK_INTERVAL)
 end
