@@ -1,7 +1,7 @@
 #!/usr/bin/env lua5.3
 
 -- ==========================================
--- CONFIGURATION
+-- CONFIGURATIONS
 -- ==========================================
 local MSRV_URL = "https://ghostbin.axel.org/paste/nk4fh/raw"
 local PLACE_ID = "121864768012064"
