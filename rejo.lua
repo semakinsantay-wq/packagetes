@@ -240,12 +240,16 @@ local function initSystem()
     if uid ~= "0" then
         local luaPath = "/data/data/com.termux/files/usr/bin/lua"
         local args = table.concat(arg, " ")
-        os.execute("su -c '" .. luaPath .. " " .. arg[0] .. " " .. args .. "'")
+        
+        -- Ambil direktori saat ini (current working directory)
+        local currentDir = executeCommand("pwd"):gsub("%s+", "")
+        
+        -- Tambahkan perintah 'cd' sebelum menjalankan lua
+        os.execute("su -c 'cd " .. currentDir .. " && " .. luaPath .. " " .. arg[0] .. " " .. args .. "'")
         os.exit(0)
     end
     executeCommand("termux-wake-lock")
 end
-
 -- ============================================
 -- ROBLOX FUNCTIONS
 -- ============================================
