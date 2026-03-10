@@ -96,7 +96,7 @@ local AUTO_RANDOM_CODE = false
 -- GRID SETTINGS (XML)
 local GRID_COLS = 3
 local BOX_SIZE = 150
-local START_OFFSET_Y = 50
+local START_OFFSET_Y = 80
 local GAP_X = 5
 local GAP_Y = 60
 
