@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/lua
 
--- Manajer Roblox Multi-Akun untuk Termux (Lua 5.3)
+-- Manajer Roblox Multi-Akun untuk Termuxs (Lua 5.3)
 -- Hanya membutuhkan: pkg install lua53 sqlite
 
 -- ============================================
@@ -51,9 +51,7 @@ local function simpleJsonEncode(t)
 end
 
 local function simpleJsonDecode(str)
-    -- Implementasi sederhana, asumsi format standar
     local t = {}
-    -- Hapus kurung kurawal
     str = str:match("{(.*)}")
     if not str then return nil end
     
@@ -72,77 +70,73 @@ local function simpleJsonDecode(str)
     return t
 end
 
--- Load konfigurasi
-local function loadConfig()
+-- ============================================
+-- CEK ARGUMEN
+-- ============================================
+local function checkArgs()
+    for i = 1, #arg do
+        if arg[i] == "-reset" then
+            os.remove(CONFIG_FILE)
+            print("✅ Konfigurasi telah direset")
+            os.exit(0)
+        end
+    end
+end
+
+-- ============================================
+-- LOAD ATAU BUAT KONFIGURASI
+-- ============================================
+local function loadOrCreateConfig()
     local content = readFile(CONFIG_FILE)
+    
     if content and content ~= "" then
+        -- Konfigurasi sudah ada, load saja
         config = simpleJsonDecode(content) or {}
-    end
-    
-    -- Set default
-    config.PLACE_ID = config.PLACE_ID or "121864768012064"
-    config.MSRV_URL = config.MSRV_URL or "ghostbin.axel.org/paste/nk4fh/raw"
-    config.YES_KEY = config.YES_KEY or ""
-    
-    return config
-end
-
--- Simpan konfigurasi
-local function saveConfig()
-    local content = simpleJsonEncode(config)
-    if writeFile(CONFIG_FILE, content) then
-        print("✅ Konfigurasi tersimpan di " .. CONFIG_FILE)
+        print("📂 Memuat konfigurasi dari " .. CONFIG_FILE)
+        return true
     else
-        print("❌ Gagal menyimpan konfigurasi")
+        -- Konfigurasi belum ada, minta input
+        print("\n🔧 Konfigurasi pertama kali - Masukkan data berikut:")
+        
+        -- Input YES_KEY
+        print("\n🔑 Masukkan YES_KEY (tidak ada default):")
+        io.write("> ")
+        config.YES_KEY = io.read():match("^%s*(.-)%s*$")
+        if config.YES_KEY == "" then
+            print("❌ YES_KEY tidak boleh kosong!")
+            os.exit(1)
+        end
+        
+        -- Input PLACE_ID
+        print("\n🎮 Masukkan PLACE_ID [default: 121864768012064]:")
+        io.write("> ")
+        local newPlaceId = io.read():match("^%s*(.-)%s*$")
+        config.PLACE_ID = (newPlaceId ~= "" and newPlaceId) or "121864768012064"
+        
+        -- Input MSRV_URL
+        print("\n🌐 Masukkan MSRV_URL (tanpa https://) [default: ghostbin.axel.org/paste/nk4fh/raw]:")
+        io.write("> ")
+        local newMsrvUrl = io.read():match("^%s*(.-)%s*$")
+        config.MSRV_URL = (newMsrvUrl ~= "" and newMsrvUrl) or "ghostbin.axel.org/paste/nk4fh/raw"
+        
+        -- Simpan konfigurasi
+        local content = simpleJsonEncode(config)
+        if writeFile(CONFIG_FILE, content) then
+            print("\n✅ Konfigurasi tersimpan di " .. CONFIG_FILE)
+        else
+            print("❌ Gagal menyimpan konfigurasi")
+            os.exit(1)
+        end
+        
+        return false
     end
 end
 
--- Reset konfigurasi
-local function resetConfig()
-    os.remove(CONFIG_FILE)
-    print("✅ Konfigurasi telah direset")
-    os.exit(0)
-end
-
--- Cek argumen
-for i = 1, #arg do
-    if arg[i] == "-reset" then
-        resetConfig()
-    end
-end
-
--- Load konfigurasi
-loadConfig()
-
--- Input YES_KEY
-if config.YES_KEY == "" then
-    print("\n🔑 Masukkan YES_KEY (tidak ada default):")
-    io.write("> ")
-    config.YES_KEY = io.read():match("^%s*(.-)%s*$")
-    if config.YES_KEY == "" then
-        print("❌ YES_KEY tidak boleh kosong!")
-        os.exit(1)
-    end
-end
-
--- Input PLACE_ID
-print("\n🎮 Masukkan PLACE_ID [default: " .. config.PLACE_ID .. "]:")
-io.write("> ")
-local newPlaceId = io.read():match("^%s*(.-)%s*$")
-if newPlaceId ~= "" then
-    config.PLACE_ID = newPlaceId
-end
-
--- Input MSRV_URL
-print("\n🌐 Masukkan MSRV_URL (tanpa https://) [default: " .. config.MSRV_URL .. "]:")
-io.write("> ")
-local newMsrvUrl = io.read():match("^%s*(.-)%s*$")
-if newMsrvUrl ~= "" then
-    config.MSRV_URL = newMsrvUrl
-end
-
--- Simpan konfigurasi
-saveConfig()
+-- ============================================
+-- EKSEKUSI
+-- ============================================
+checkArgs()  -- Cek dulu apakah ada argumen -reset
+local isConfigExists = loadOrCreateConfig()  -- Load atau buat konfigurasi baru
 
 -- ============================================
 -- KONFIGURASI SCRIPT
@@ -173,6 +167,15 @@ local SETTINGS = {
     DEBUG_MODE = false
 }
 
+print("\n🚀 Memulai dengan konfigurasi:")
+print("   PLACE_ID: " .. SETTINGS.PLACE_ID)
+print("   MSRV_URL: " .. SETTINGS.MSRV_URL)
+print("   YES_KEY: " .. string.sub(SETTINGS.YES_KEY, 1, 5).. "..." .. string.sub(SETTINGS.YES_KEY, -5))
+print("")
+
+-- Lanjutkan dengan script utama di bawah ini...
+-- (SISANYA SAMA PERSIS SEPERTI SCRIPT SEBELUMNYA, DARI SINI KE BAWAH TIDAK BERUBAH)
+
 -- ============================================
 -- GLOBAL VARIABLES
 -- ============================================
@@ -182,7 +185,7 @@ local launchTimers = {}
 local lastRestartMap = {}
 
 -- ============================================
--- UTILITY FUNCTIONS (TANPA SOCKET)
+-- UTILITY FUNCTIONS
 -- ============================================
 local function sleep(seconds)
     os.execute("sleep " .. seconds)
@@ -211,23 +214,6 @@ local function httpGet(url)
         return result, 200
     end
     
-    return nil, 0
-end
-
-local function httpPost(url, data, headers)
-    local headerStr = ""
-    if headers then
-        for k, v in pairs(headers) do
-            headerStr = headerStr .. ' -H "' .. k .. ': ' .. v .. '"'
-        end
-    end
-    
-    local cmd = 'curl -s -L -X POST --max-time 30' .. headerStr .. ' --data "' .. data .. '" "' .. url .. '" 2>/dev/null'
-    local result = executeCommand(cmd)
-    
-    if result and result ~= "" then
-        return result, 200
-    end
     return nil, 0
 end
 
@@ -297,7 +283,6 @@ local function getUserInfo(cookie)
     local response, code = httpGet("https://users.roblox.com/v1/users/authenticated")
     
     if code == 200 and response then
-        -- Parse JSON sederhana
         local id = response:match('"id":(%d+)')
         local name = response:match('"name":"([^"]+)"')
         if id and name then
