@@ -1,7 +1,7 @@
 #!/usr/bin/env lua5.3
 
 -- ==========================================
--- CONFIGURATION
+-- CONFIGURATIONS
 -- ==========================================
 local MSRV_URL = "https://ghostbin.axel.org/paste/nk4fh/raw"
 local PLACE_ID = "121864768012064"
@@ -350,7 +350,47 @@ local function main()
         os.exit(1)
     end
     
-    currentCleanCode = codesList[1] -- Simplified: Ambil kode pertama. Bisa dimodifikasi untuk input manual
+    -- ==========================================
+    -- MENU PEMILIHAN CODE (Sesuai script asli Node.js)
+    -- ==========================================
+    if not AUTO_RANDOM_CODE then
+        local selectedIdx = -1
+        
+        -- Cek apakah ada argumen -server (contoh: lua5.3 randserv.lua -server 2)
+        if arg then
+            for i, v in ipairs(arg) do
+                if v == "-server" and arg[i+1] then
+                    selectedIdx = tonumber(arg[i+1])
+                    break
+                end
+            end
+        end
+
+        if selectedIdx and selectedIdx > 0 and selectedIdx <= #codesList then
+            print("\n✅ Auto-selecting Server [" .. selectedIdx .. "] via arguments.")
+            currentCleanCode = codesList[selectedIdx]
+        else
+            -- Tampilkan menu jika tidak ada argumen
+            print("\n📜 Available Codes:")
+            for i, code in ipairs(codesList) do
+                print(string.format("[%d] %s", i, code))
+            end
+            
+            io.write("\n👉 Choose Server: ")
+            local selection = io.read()
+            local idx = tonumber(selection)
+            
+            if not idx or idx < 1 or idx > #codesList then
+                print("❌ Invalid selection.")
+                os.exit(1)
+            end
+            currentCleanCode = codesList[idx]
+        end
+    else
+        -- Jika AUTO_RANDOM_CODE = true, biarkan script memilih secara acak nanti
+        currentCleanCode = codesList[math.random(1, #codesList)]
+    end
+    -- ==========================================
     local codeDisplay = AUTO_RANDOM_CODE and "RANDOM" or "..." .. currentCleanCode:sub(-4)
     
     autoArrangeXML()
