@@ -4,7 +4,7 @@
 -- Hanya membutuhkan: pkg install lua53 sqlite
 
 -- ============================================
--- KONFIGURASI AWAL
+-- KONFIGURASI AWALs
 -- ============================================
 local CONFIG_FILE = "roblox_config.json"
 local config = {}
@@ -265,15 +265,25 @@ end
 
 local function getRobloxCookie(packageName)
     local cookiesPath = "/data/data/" .. packageName .. "/app_webview/Default/Cookies"
-    local tempPath = "/sdcard/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
+    local tempPath = "/data/local/tmp/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
     
-    executeCommand("cp '" .. cookiesPath .. "' '" .. tempPath .. "'")
+    -- 1. Copy database cookie menggunakan akses root secara eksplisit
+    executeCommand("su -c 'cp \"" .. cookiesPath .. "\" \"" .. tempPath .. "\"'")
     
-    local query = 'sqlite3 "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \'.ROBLOSECURITY\' LIMIT 1"'
+    -- 2. Ubah permission file temp agar bisa dibaca oleh Termux
+    executeCommand("su -c 'chmod 666 \"" .. tempPath .. "\"'")
+    
+    -- 3. Gunakan path absolut sqlite3 bawaan Termux agar tidak "command not found"
+    local sqlitePath = "/data/data/com.termux/files/usr/bin/sqlite3"
+    local query = sqlitePath .. ' "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \'.ROBLOSECURITY\' LIMIT 1"'
+    
+    -- 4. Eksekusi query untuk mengambil cookie
     local cookie = executeCommand(query):gsub("%s+", "")
     
-    executeCommand("rm '" .. tempPath .. "'")
+    -- 5. Hapus file temp dengan akses root
+    executeCommand("su -c 'rm \"" .. tempPath .. "\"'")
     
+    -- 6. Format ulang cookie jika berhasil didapat
     if cookie ~= "" and cookie:sub(1,1) ~= "_" then
         cookie = "_" .. cookie
     end
