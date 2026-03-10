@@ -4,7 +4,7 @@
 -- Membutuhkan: pkg install lua53 sqlite curl
 
 -- ============================================
--- KONFIGURASI AWALX
+-- KONFIGURASI AWALA
 -- ============================================
 local CONFIG_FILE = "roblox_config.json"
 local config = {}
@@ -187,7 +187,6 @@ local function executeCommand(cmd)
 end
 
 local function httpGet(url)
-    -- Menggunakan path absolut curl agar aman di mode root
     local cmd = TERMUX_BIN .. 'curl -s -L --max-time 30 "' .. url .. '" 2>/dev/null'
     local result = executeCommand(cmd)
     
@@ -195,7 +194,6 @@ local function httpGet(url)
         return result, 200
     end
     
-    -- Fallback ke wget
     cmd = TERMUX_BIN .. 'wget -q -O- --timeout=30 "' .. url .. '" 2>/dev/null'
     result = executeCommand(cmd)
     if result and result ~= "" then
@@ -234,7 +232,6 @@ local function initSystem()
         os.execute("su -c 'cd " .. currentDir .. " && " .. luaPath .. " " .. arg[0] .. " " .. args .. "'")
         os.exit(0)
     end
-    -- Wake lock dengan absolute path
     executeCommand(TERMUX_BIN .. "termux-wake-lock")
 end
 
@@ -253,11 +250,10 @@ end
 
 local function getRobloxCookie(packageName)
     local cookiesPath = "/data/data/" .. packageName .. "/app_webview/Default/Cookies"
-    local tempPath = "/data/local/tmp/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
+    local tempPath = "/sdcard/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
     
-    -- Gunakan su -c untuk bypass permission denied
-    executeCommand("su -c 'cp \"" .. cookiesPath .. "\" \"" .. tempPath .. "\"'")
-    executeCommand("su -c 'chmod 666 \"" .. tempPath .. "\"'")
+    -- Copy database cookie ke sdcard
+    executeCommand("cp '" .. cookiesPath .. "' '" .. tempPath .. "'")
     
     -- Gunakan sqlite3 absolut
     local sqlitePath = TERMUX_BIN .. "sqlite3"
@@ -265,7 +261,7 @@ local function getRobloxCookie(packageName)
     local cookie = executeCommand(query):gsub("%s+", "")
     
     -- Bersihkan file temp
-    executeCommand("su -c 'rm \"" .. tempPath .. "\"'")
+    executeCommand("rm '" .. tempPath .. "'")
     
     if cookie ~= "" and cookie:sub(1,1) ~= "_" then
         cookie = "_" .. cookie
@@ -277,9 +273,15 @@ end
 local function getUserInfo(cookie)
     if not cookie then return { id = nil, name = "No Cookie" } end
     
-    local response, code = httpGet("https://users.roblox.com/v1/users/authenticated")
+    local url = "https://users.roblox.com/v1/users/authenticated"
+    local cmd = TERMUX_BIN .. 'curl -s -L --max-time 30 ' ..
+                '-H "Cookie: .ROBLOSECURITY=' .. cookie .. '" ' ..
+                '-H "User-Agent: Mozilla/5.0 (Android 10; Mobile)" ' ..
+                '"' .. url .. '" 2>/dev/null'
+                
+    local response = executeCommand(cmd)
     
-    if code == 200 and response then
+    if response and response ~= "" then
         local id = response:match('"id":(%d+)')
         local name = response:match('"name":"([^"]+)"')
         if id and name then
