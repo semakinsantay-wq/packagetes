@@ -1,15 +1,17 @@
 #!/data/data/com.termux/files/usr/bin/lua
 
--- Manajer Roblox Multi-Akun untuk Termuxs (Lua 5.3)
--- Hanya membutuhkan: pkg install lua53 sqlite
+-- Manajer Roblox Multi-Akun untuk Termux (Lua 5.3)
+-- Membutuhkan: pkg install lua53 sqlite curl
 
 -- ============================================
--- KONFIGURASI AWALs
+-- KONFIGURASI AWALX
 -- ============================================
 local CONFIG_FILE = "roblox_config.json"
 local config = {}
 
--- Fungsi untuk membaca file
+-- Path absolut Termux agar aman saat mode root
+local TERMUX_BIN = "/data/data/com.termux/files/usr/bin/"
+
 local function readFile(path)
     local file = io.open(path, "r")
     if not file then return nil end
@@ -18,7 +20,6 @@ local function readFile(path)
     return content
 end
 
--- Fungsi untuk menulis file
 local function writeFile(path, content)
     local file = io.open(path, "w")
     if not file then return false end
@@ -27,17 +28,16 @@ local function writeFile(path, content)
     return true
 end
 
--- JSON sederhana (tanpa library eksternal)
 local function simpleJsonEncode(t)
     local function encode(val)
-        local t = type(val)
-        if t == "string" then
+        local typ = type(val)
+        if typ == "string" then
             return '"' .. val:gsub('"', '\\"') .. '"'
-        elseif t == "number" then
+        elseif typ == "number" then
             return tostring(val)
-        elseif t == "boolean" then
+        elseif typ == "boolean" then
             return val and "true" or "false"
-        elseif t == "table" then
+        elseif typ == "table" then
             local parts = {}
             for k, v in pairs(val) do
                 table.insert(parts, '"' .. k .. '":' .. encode(v))
@@ -90,15 +90,12 @@ local function loadOrCreateConfig()
     local content = readFile(CONFIG_FILE)
     
     if content and content ~= "" then
-        -- Konfigurasi sudah ada, load saja
         config = simpleJsonDecode(content) or {}
         print("📂 Memuat konfigurasi dari " .. CONFIG_FILE)
         return true
     else
-        -- Konfigurasi belum ada, minta input
         print("\n🔧 Konfigurasi pertama kali - Masukkan data berikut:")
         
-        -- Input YES_KEY
         print("\n🔑 Masukkan YES_KEY (tidak ada default):")
         io.write("> ")
         config.YES_KEY = io.read():match("^%s*(.-)%s*$")
@@ -107,21 +104,18 @@ local function loadOrCreateConfig()
             os.exit(1)
         end
         
-        -- Input PLACE_ID
         print("\n🎮 Masukkan PLACE_ID [default: 121864768012064]:")
         io.write("> ")
         local newPlaceId = io.read():match("^%s*(.-)%s*$")
         config.PLACE_ID = (newPlaceId ~= "" and newPlaceId) or "121864768012064"
         
-        -- Input MSRV_URL
         print("\n🌐 Masukkan MSRV_URL (tanpa https://) [default: ghostbin.axel.org/paste/nk4fh/raw]:")
         io.write("> ")
         local newMsrvUrl = io.read():match("^%s*(.-)%s*$")
         config.MSRV_URL = (newMsrvUrl ~= "" and newMsrvUrl) or "ghostbin.axel.org/paste/nk4fh/raw"
         
-        -- Simpan konfigurasi
-        local content = simpleJsonEncode(config)
-        if writeFile(CONFIG_FILE, content) then
+        local encodedContent = simpleJsonEncode(config)
+        if writeFile(CONFIG_FILE, encodedContent) then
             print("\n✅ Konfigurasi tersimpan di " .. CONFIG_FILE)
         else
             print("❌ Gagal menyimpan konfigurasi")
@@ -132,11 +126,8 @@ local function loadOrCreateConfig()
     end
 end
 
--- ============================================
--- EKSEKUSI
--- ============================================
-checkArgs()  -- Cek dulu apakah ada argumen -reset
-local isConfigExists = loadOrCreateConfig()  -- Load atau buat konfigurasi baru
+checkArgs()
+loadOrCreateConfig()
 
 -- ============================================
 -- KONFIGURASI SCRIPT
@@ -173,9 +164,6 @@ print("   MSRV_URL: " .. SETTINGS.MSRV_URL)
 print("   YES_KEY: " .. string.sub(SETTINGS.YES_KEY, 1, 5).. "..." .. string.sub(SETTINGS.YES_KEY, -5))
 print("")
 
--- Lanjutkan dengan script utama di bawah ini...
--- (SISANYA SAMA PERSIS SEPERTI SCRIPT SEBELUMNYA, DARI SINI KE BAWAH TIDAK BERUBAH)
-
 -- ============================================
 -- GLOBAL VARIABLES
 -- ============================================
@@ -198,17 +186,17 @@ local function executeCommand(cmd)
     return result
 end
 
--- HTTP Request sederhana menggunakan wget/curl
 local function httpGet(url)
-    -- Coba wget dulu
-    local cmd = 'wget -q -O- --timeout=30 "' .. url .. '" 2>/dev/null'
+    -- Menggunakan path absolut curl agar aman di mode root
+    local cmd = TERMUX_BIN .. 'curl -s -L --max-time 30 "' .. url .. '" 2>/dev/null'
     local result = executeCommand(cmd)
+    
     if result and result ~= "" then
         return result, 200
     end
     
-    -- Fallback ke curl
-    cmd = 'curl -s -L --max-time 30 "' .. url .. '" 2>/dev/null'
+    -- Fallback ke wget
+    cmd = TERMUX_BIN .. 'wget -q -O- --timeout=30 "' .. url .. '" 2>/dev/null'
     result = executeCommand(cmd)
     if result and result ~= "" then
         return result, 200
@@ -238,18 +226,18 @@ end
 local function initSystem()
     local uid = executeCommand("id -u"):gsub("%s+", "")
     if uid ~= "0" then
-        local luaPath = "/data/data/com.termux/files/usr/bin/lua"
+        local luaPath = TERMUX_BIN .. "lua"
         local args = table.concat(arg, " ")
-        
-        -- Ambil direktori saat ini (current working directory)
         local currentDir = executeCommand("pwd"):gsub("%s+", "")
         
-        -- Tambahkan perintah 'cd' sebelum menjalankan lua
+        -- Masuk ke direktori saat ini sebelum mengeksekusi lua via root
         os.execute("su -c 'cd " .. currentDir .. " && " .. luaPath .. " " .. arg[0] .. " " .. args .. "'")
         os.exit(0)
     end
-    executeCommand("termux-wake-lock")
+    -- Wake lock dengan absolute path
+    executeCommand(TERMUX_BIN .. "termux-wake-lock")
 end
+
 -- ============================================
 -- ROBLOX FUNCTIONS
 -- ============================================
@@ -267,23 +255,18 @@ local function getRobloxCookie(packageName)
     local cookiesPath = "/data/data/" .. packageName .. "/app_webview/Default/Cookies"
     local tempPath = "/data/local/tmp/temp_cookie_" .. packageName .. "_" .. os.time() .. ".db"
     
-    -- 1. Copy database cookie menggunakan akses root secara eksplisit
+    -- Gunakan su -c untuk bypass permission denied
     executeCommand("su -c 'cp \"" .. cookiesPath .. "\" \"" .. tempPath .. "\"'")
-    
-    -- 2. Ubah permission file temp agar bisa dibaca oleh Termux
     executeCommand("su -c 'chmod 666 \"" .. tempPath .. "\"'")
     
-    -- 3. Gunakan path absolut sqlite3 bawaan Termux agar tidak "command not found"
-    local sqlitePath = "/data/data/com.termux/files/usr/bin/sqlite3"
+    -- Gunakan sqlite3 absolut
+    local sqlitePath = TERMUX_BIN .. "sqlite3"
     local query = sqlitePath .. ' "' .. tempPath .. '" "SELECT value FROM cookies WHERE name = \'.ROBLOSECURITY\' LIMIT 1"'
-    
-    -- 4. Eksekusi query untuk mengambil cookie
     local cookie = executeCommand(query):gsub("%s+", "")
     
-    -- 5. Hapus file temp dengan akses root
+    -- Bersihkan file temp
     executeCommand("su -c 'rm \"" .. tempPath .. "\"'")
     
-    -- 6. Format ulang cookie jika berhasil didapat
     if cookie ~= "" and cookie:sub(1,1) ~= "_" then
         cookie = "_" .. cookie
     end
@@ -312,7 +295,6 @@ end
 -- ============================================
 local function fetchLinkCodes()
     print("🌐 Fetching codes...")
-    
     local response, code = httpGet(SETTINGS.MSRV_URL)
     
     if code == 200 and response then
@@ -325,13 +307,11 @@ local function fetchLinkCodes()
         end
         return codes
     end
-    
     return {}
 end
 
 local function runSolver(fullCookie, accPkg)
     print("🤖 Running solver for " .. accPkg .. "...")
-    
     local url = SETTINGS.SOLVER_API_URL .. "?cookie=" .. fullCookie .. "&yeskey=" .. SETTINGS.YES_KEY
     local response, code = httpGet(url)
     
@@ -433,7 +413,6 @@ local function isUserInGame(pkg, cookie, userId)
         }
     end
     
-    -- Fallback ke deteksi lokal
     local foregroundApp = executeCommand("su -c 'dumpsys window windows | grep -E \"mCurrentFocus|mFocusedApp\" | head -1'")
     if foregroundApp:find(pkg) or foregroundApp:find("Roblox") then
         return { isInGame = true, status = "in-game", source = "foreground" }
@@ -565,7 +544,7 @@ local function main()
                 action = "-"
             }
         else
-            print("⚠️ Skipping " .. pkg .. ": Cookie Expired")
+            print("⚠️ Skipping " .. pkg .. ": Cookie Expired or Not Found")
         end
     end
     
@@ -647,7 +626,6 @@ local function main()
         sleep(3)
         protectProcessFromLMK(acc.pkg)
         
-        -- Tunggu stabil
         for sec = 1, 60 do
             if sec % 10 == 0 then
                 accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg)
@@ -683,7 +661,6 @@ local function main()
                 
                 renderDashboard(codeDisplay, "🔄 Reopen " .. acc.username .. "...")
                 
-                -- Reopen
                 stopPackage(acc.pkg)
                 releaseMemory()
                 sleep(1.5)
