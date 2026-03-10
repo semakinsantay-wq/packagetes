@@ -3,6 +3,9 @@
 local os = require("os")
 local io = require("io")
 
+-- BERSIHKAN LAYAR SAAT PERTAMA KALI JALAN
+os.execute("clear")
+
 -- --- FUNGSI UTILITAS DASAR ---
 local function sleep(ms)
     os.execute("sleep " .. tonumber(ms) / 1000)
@@ -44,7 +47,7 @@ local config = {}
 if arg then
     for i = 1, #arg do
         if arg[i] == "-reset" then
-            print("🔄 Opsi '-reset' terdeteksi. Menghapus konfigurasi lama...")
+            print("🔄 Opsi '-reset' terdeteksi. Menghapus konfigurasi lama...\n")
             os.remove(config_file)
             break
         end
@@ -65,7 +68,7 @@ if file_exists(config_file) then
     config.PLACE_ID = content:match('"PLACE_ID"%s*:%s*"([^"]+)"')
     config.MSRV_URL = content:match('"MSRV_URL"%s*:%s*"([^"]+)"')
 else
-    print("🚀 Setup Konfigurasi:")
+    print("🚀 Setup Konfigurasi Pertama Kali:")
     
     io.write("Masukkan YES_KEY Solver: ")
     config.YES_KEY = io.read()
@@ -81,9 +84,7 @@ else
     io.write("Masukkan MSRV_URL (tanpa https:// tidak apa-apa): ")
     local msrv_input = io.read()
     if msrv_input then
-        -- Bersihkan spasi berlebih
         msrv_input = msrv_input:match("^%s*(.-)%s*$")
-        -- Cek apakah sudah ada http:// atau https://
         if msrv_input ~= "" and not msrv_input:match("^https?://") then
             config.MSRV_URL = "https://" .. msrv_input
         else
@@ -98,7 +99,9 @@ else
         config.YES_KEY, config.PLACE_ID, config.MSRV_URL)
     f:write(json_str)
     f:close()
-    print("✅ Konfigurasi berhasil disimpan ke " .. config_file .. "\n")
+    print("✅ Konfigurasi berhasil disimpan. Melanjutkan program...\n")
+    sleep(1500)
+    os.execute("clear")
 end
 
 -- --- CONFIGURATION LENGKAP ---
@@ -108,7 +111,7 @@ local AUTO_RANDOM_CODE = false
 -- GRID SETTINGS (XML)
 local GRID_COLS = 3
 local BOX_SIZE = 150
-local START_OFFSET_Y = 80
+local START_OFFSET_Y = 50
 local GAP_X = 5
 local GAP_Y = 60
 
@@ -124,7 +127,7 @@ local launchTimers = {}
 
 -- --- FUNGSI SISTEM ---
 local function applyPerformanceTweaks()
-    print("\n🚀 Menerapkan Tweak Performa (CPU, Thermal, UI)...")
+    print("🚀 Menerapkan Tweak Performa (CPU, Thermal, UI)...")
     local tweaksCmd = [[
         for i in {0..7}; do
             echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null;
@@ -142,14 +145,14 @@ local function applyPerformanceTweaks()
         settings put global animator_duration_scale 0 2>/dev/null;
     ]]
     os.execute("su -c '" .. tweaksCmd .. "' >/dev/null 2>&1")
-    print("   ✅ Tweak Performa Aktif!")
+    print("✅ Tweak Performa Aktif!\n")
 end
 
 local function getPackages()
     local output = exec("pm list packages | grep roblox")
     local packages = {}
     for pkg in output:gmatch("package:([^\n]+)") do
-        -- Kurung ganda () untuk membuang nilai return ke-2 (angka) dari gsub
+        -- Kurung ganda () mencegah nilai ganda dari gsub
         table.insert(packages, (pkg:gsub("%s+", "")))
     end
     table.sort(packages)
@@ -158,10 +161,10 @@ end
 
 local function getRobloxCookie(packageName)
     local tempPath = "/sdcard/temp_cookie_" .. packageName .. "_" .. tostring(os.time()) .. ".db"
-    os.execute("su -c 'cp /data/data/" .. packageName .. "/app_webview/Default/Cookies " .. tempPath .. "'")
+    os.execute("su -c 'cp /data/data/" .. packageName .. "/app_webview/Default/Cookies " .. tempPath .. " 2>/dev/null'")
     local query = "sqlite3 " .. tempPath .. " \"SELECT value FROM cookies WHERE name = '.ROBLOSECURITY' LIMIT 1\""
     local cookie = exec(query)
-    os.execute("rm " .. tempPath)
+    os.execute("rm -f " .. tempPath)
     
     if cookie and cookie ~= "" then
         if not cookie:match("^_") then cookie = "_" .. cookie end
@@ -295,7 +298,7 @@ local function isAppHealthy(pkg, cookie, userId)
 end
 
 local function autoArrangeXML(packages)
-    print("\n📐 Mengatur XML (Grid " .. GRID_COLS .. "xN | Size " .. BOX_SIZE .. " | Gap Y " .. GAP_Y .. ")...")
+    print("📐 Mengatur XML (Grid " .. GRID_COLS .. "xN | Size " .. BOX_SIZE .. " | Gap Y " .. GAP_Y .. ")...")
     for index, pkg in ipairs(packages) do
         local idx0 = index - 1
         local col = idx0 % GRID_COLS
@@ -318,7 +321,7 @@ local function autoArrangeXML(packages)
         
         os.execute(cmd .. " >/dev/null 2>&1")
     end
-    print("✅ Posisi XML tersimpan dan Grafis dipaksa rata kiri.")
+    print("✅ Posisi XML tersimpan dan Grafis dipaksa rata kiri.\n")
 end
 
 local function launchPackage(pkg, url)
@@ -350,12 +353,13 @@ end
 
 local function renderDashboard(codeDisplay, statusMsg)
     os.execute("clear")
-    print("📱 SYSTEM: BOOSTER ON 🔥 | Mode: LUA 5.3")
-    print(string.format("📏 MODE: XML GRID (%d cols) | GAP Y: %dpx", GRID_COLS, GAP_Y))
-    print(string.format("📊 STATUS: %s | Code: %s\n", statusMsg, codeDisplay))
+    print("📱 SYS: BOOSTER ON 🔥 | LUA 5.3")
+    print(string.format("📏 MODE: XML GRID (%d) | GAP Y: %dpx", GRID_COLS, GAP_Y))
+    print(string.format("📊 STAT: %s | Code: %s\n", statusMsg, codeDisplay))
     
-    print(string.format("%-17s | %-12s | %-10s | %-20s | %-8s", "Package", "Username", "State", "Status", "RAM"))
-    print(string.rep("-", 75))
+    -- SUSUNAN BARU AGAR RAPI DI HP: Pkg | User | RAM | State | Status (Emoji Paling Kanan)
+    print(string.format("%-14s | %-10s | %-7s | %-6s | %s", "Package", "User", "RAM", "State", "Status"))
+    print(string.rep("-", 60))
     
     local sorted_pkgs = {}
     for pkg in pairs(accountStates) do table.insert(sorted_pkgs, pkg) end
@@ -363,10 +367,14 @@ local function renderDashboard(codeDisplay, statusMsg)
     
     for _, pkg in ipairs(sorted_pkgs) do
         local s = accountStates[pkg]
-        local shortPkg = pkg:gsub("com%.roblox%.client", "...client")
-        local shortUser = s.username:sub(1, 12)
-        local stateStr = s.isRunning and "Run 🟢" or "Wait ⚪"
-        print(string.format("%-17s | %-12s | %-10s | %-20s | %-8s", shortPkg, shortUser, stateStr, string.sub(s.serverStatus, 1, 20), s.ramUsage))
+        
+        -- Memotong string agar tidak melebar
+        local shortPkg = pkg:gsub("com%.roblox%.client", "..client")
+        shortPkg = string.sub(shortPkg, 1, 14)
+        local shortUser = string.sub(s.username, 1, 10)
+        local stateStr = s.isRunning and "Run" or "Wait"
+        
+        print(string.format("%-14s | %-10s | %-7s | %-6s | %s", shortPkg, shortUser, s.ramUsage, stateStr, s.serverStatus))
     end
     print("\n")
 end
@@ -396,8 +404,7 @@ end
 
 local accounts = {}
 for _, pkg in ipairs(packages) do
-    io.write("Reading " .. pkg .. "... \r")
-    io.flush()
+    print("⏳ Membaca " .. pkg .. "...")
     
     local cookie = getRobloxCookie(pkg)
     local userInfo = getUserInfo(cookie)
@@ -407,7 +414,7 @@ for _, pkg in ipairs(packages) do
         accountStates[pkg] = { username = userInfo.name, isRunning = false, serverStatus = "Waiting...", ramUsage = "0 MB" }
         csrfTokens[pkg] = getCsrfToken(cookie)
     else
-        print("\n⚠️ Skipping " .. pkg .. ": Cookie Expired atau Tidak Valid.")
+        print("⚠️ Skipping " .. pkg .. ": Cookie Expired/Invalid.")
     end
 end
 
@@ -416,7 +423,9 @@ if #accounts == 0 then
     os.exit(0)
 end
 
-print("\n✅ Loaded " .. #accounts .. " valid accounts.")
+print("\n✅ Loaded " .. #accounts .. " valid accounts.\n")
+sleep(1000)
+os.execute("clear")
 
 local codes = fetchLinkCodes()
 if #codes == 0 then
@@ -439,19 +448,19 @@ if not AUTO_RANDOM_CODE then
     cleanCode = codes[sel]
 end
 
+os.execute("clear")
 local codeDisplay = AUTO_RANDOM_CODE and "RANDOM" or "..." .. string.sub(cleanCode, -4)
 local pkgs_only = {}
 for _, a in ipairs(accounts) do table.insert(pkgs_only, a.pkg) end
 autoArrangeXML(pkgs_only)
 
 -- --- FASE 1: LAUNCH ---
-print("\n🚀 Launching valid instances (Fase 1)...")
 for _, acc in ipairs(accounts) do
-    accountStates[acc.pkg].serverStatus = "Solving Captcha ⏳"
-    renderDashboard(codeDisplay, "🤖 Mengirim cookie " .. acc.username .. " ke Solver API...")
+    accountStates[acc.pkg].serverStatus = "Solving Captcha"
+    renderDashboard(codeDisplay, "🤖 Mengirim cookie " .. acc.username .. " ke Solver...")
     runSolver(acc.cookie, acc.pkg)
-    renderDashboard(codeDisplay, "✅ Solver selesai untuk " .. acc.username .. ". Melakukan Launching...")
-    sleep(2000)
+    renderDashboard(codeDisplay, "✅ Solver selesai untuk " .. acc.username .. ". Launching...")
+    sleep(1500)
     
     local currentCode = AUTO_RANDOM_CODE and codes[math.random(1, #codes)] or cleanCode
     if currentCode:match("linkCode=") then
@@ -476,13 +485,13 @@ for _, acc in ipairs(accounts) do
         local crashed = false
         for sec = 1, 60 do
             if sec % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-            renderDashboard(codeDisplay, string.format("⏳ %s Stabilizing... (%ds/60s) 🛡️", acc.username, sec))
+            renderDashboard(codeDisplay, string.format("⏳ %s Stabilizing... (%ds/60s)", acc.username, sec))
             sleep(1000)
             
             local healthCheck = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
             if not healthCheck.healthy then
                 accountStates[acc.pkg].serverStatus = "Crash: " .. healthCheck.reason
-                renderDashboard(codeDisplay, string.format("⚠️ %s %s! Membuka ulang...", acc.username, healthCheck.reason))
+                renderDashboard(codeDisplay, string.format("⚠️ %s %s! Buka ulang...", acc.username, healthCheck.reason))
                 crashed = true
                 sleep(3000)
                 break
@@ -492,7 +501,7 @@ for _, acc in ipairs(accounts) do
         end
         
         if not crashed then
-            accountStates[acc.pkg].serverStatus = "In Game 🎮 (Stable)"
+            accountStates[acc.pkg].serverStatus = "In Game 🎮"
             renderDashboard(codeDisplay, "✅ " .. acc.username .. " Stabil! Lanjut...")
             isStable = true
             sleep(2000)
@@ -501,18 +510,17 @@ for _, acc in ipairs(accounts) do
 end
 
 -- --- FASE 2: MONITORING ---
-print("\n🔄 Memasuki Mode Continuous Monitoring...")
 releaseMemory()
 
 while true do
     local anyCrashed = false
     
     for _, acc in ipairs(accounts) do
-        renderDashboard(codeDisplay, "🔒 Cek validitas cookie " .. acc.username .. "...")
+        renderDashboard(codeDisplay, "🔒 Cek cookie " .. acc.username .. "...")
         local cookieStatus = getUserInfo(acc.cookie)
         
         if not cookieStatus.id or cookieStatus.name == "Expired" then
-            accountStates[acc.pkg].serverStatus = "❌ Invalid/Banned (403)"
+            accountStates[acc.pkg].serverStatus = "❌ Banned (403)"
             accountStates[acc.pkg].isRunning = false
             accountStates[acc.pkg].ramUsage = "0 MB"
             stopPackage(acc.pkg)
@@ -520,8 +528,8 @@ while true do
             goto continue
         end
         
-        renderDashboard(codeDisplay, "👀 Mengecek status " .. acc.username .. "...")
-        sleep(2000)
+        renderDashboard(codeDisplay, "👀 Cek status " .. acc.username .. "...")
+        sleep(1500)
         accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg)
         
         local healthCheck = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
@@ -531,7 +539,7 @@ while true do
             if healthCheck.loading then
                 accountStates[acc.pkg].serverStatus = "⏳ " .. healthCheck.reason
             else
-                accountStates[acc.pkg].serverStatus = "In Game 🎮 (Monitoring)"
+                accountStates[acc.pkg].serverStatus = "In Game 🎮"
             end
         else
             anyCrashed = true
@@ -540,8 +548,8 @@ while true do
             
             while not isStable do
                 accountStates[acc.pkg].isRunning = false
-                accountStates[acc.pkg].serverStatus = "⚠️ " .. currentCrashReason .. " - Reopen"
-                renderDashboard(codeDisplay, "⚠️ " .. acc.username .. " Crash - Melakukan Auto-Reopen...")
+                accountStates[acc.pkg].serverStatus = "⚠️ " .. currentCrashReason
+                renderDashboard(codeDisplay, "⚠️ " .. acc.username .. " Crash - Auto-Reopen...")
                 
                 stopPackage(acc.pkg)
                 releaseMemory()
@@ -561,7 +569,7 @@ while true do
                 local crashedDuringRec = false
                 for w = 1, 60 do
                     if w % 5 == 0 then accountStates[acc.pkg].ramUsage = getAppRam(acc.pkg) end
-                    renderDashboard(codeDisplay, string.format("⏳ Menunggu %s re-open... (%ds/60s) 🛡️", acc.username, w))
+                    renderDashboard(codeDisplay, string.format("⏳ Re-open %s... (%ds/60s)", acc.username, w))
                     sleep(1000)
                     
                     local recoveryHealth = isAppHealthy(acc.pkg, acc.cookie, acc.userId)
@@ -578,7 +586,7 @@ while true do
                 
                 if not crashedDuringRec then
                     accountStates[acc.pkg].isRunning = true
-                    accountStates[acc.pkg].serverStatus = "In Game 🎮 (Recovered)"
+                    accountStates[acc.pkg].serverStatus = "In Game 🎮"
                     isStable = true
                     sleep(2000)
                 end
@@ -588,6 +596,6 @@ while true do
     end
     
     if anyCrashed then releaseMemory() end
-    renderDashboard(codeDisplay, "👀 Monitoring Selesai | Next check in " .. (CHECK_INTERVAL/1000) .. "s")
+    renderDashboard(codeDisplay, "👀 Monitoring Selesai | Cek lagi " .. (CHECK_INTERVAL/1000) .. "s")
     sleep(CHECK_INTERVAL)
 end
